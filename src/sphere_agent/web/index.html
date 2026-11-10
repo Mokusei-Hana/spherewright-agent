@@ -1,1068 +1,129 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Spherewright // 戴森球计划 AI 智能控制台</title>
-  <!-- Google Fonts: Rajdhani for Aerospace HUD & Inter / JetBrains Mono for Data -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <meta name="color-scheme" content="light dark">
+  <meta name="webui-version" content="3.0.0">
+  <title>Spherewright · 智能体控制台</title>
   <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            'dsp-bg': '#070b14',
-            'dsp-surface': '#0c1222',
-            'dsp-card': '#111a30',
-            'dsp-card-hover': '#16223f',
-            'dsp-border': 'rgba(0, 240, 255, 0.18)',
-            'dsp-border-subtle': 'rgba(255, 255, 255, 0.07)',
-            'dsp-cyan': '#00f0ff',
-            'dsp-cyan-glow': 'rgba(0, 240, 255, 0.35)',
-            'dsp-gold': '#f59e0b',
-            'dsp-gold-glow': 'rgba(245, 158, 11, 0.35)',
-            'dsp-purple': '#c084fc',
-            'dsp-emerald': '#10b981',
-            'dsp-danger': '#ef4444',
-            'dsp-muted': '#7c8ba1',
-          },
-          fontFamily: {
-            hud: ['Rajdhani', 'sans-serif'],
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-            mono: ['JetBrains Mono', 'Consolas', 'monospace'],
-          }
-        }
-      }
-    }
+    (() => {
+      let theme;
+      try { theme = localStorage.getItem('spherewright-theme'); } catch {}
+      document.documentElement.dataset.theme = ['light', 'dark'].includes(theme)
+        ? theme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    })();
   </script>
-  <style>
-    :root {
-      color-scheme: dark;
-    }
-    body {
-      background-color: #070b14;
-      background-image: 
-        radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.06) 0%, transparent 60%),
-        radial-gradient(rgba(0, 240, 255, 0.08) 1px, transparent 1px), 
-        radial-gradient(rgba(0, 240, 255, 0.03) 1px, #070b14 1px);
-      background-size: 100% 100%, 36px 36px, 12px 12px;
-      background-position: 0 0, 0 0, 18px 18px;
-    }
-    * { scrollbar-width: thin; scrollbar-color: rgba(0, 240, 255, 0.25) #0c1222; }
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: #0c1222; }
-    ::-webkit-scrollbar-thumb { background: rgba(0, 240, 255, 0.25); border-radius: 2px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(0, 240, 255, 0.5); }
-    
-    /* Tech border & HUD elements */
-    .hud-panel {
-      position: relative;
-      background: rgba(12, 18, 34, 0.85);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(0, 240, 255, 0.16);
-    }
-    .hud-panel::before {
-      content: '';
-      position: absolute;
-      top: -1px;
-      left: -1px;
-      width: 8px;
-      height: 8px;
-      border-top: 2px solid #00f0ff;
-      border-left: 2px solid #00f0ff;
-      pointer-events: none;
-    }
-    .hud-panel::after {
-      content: '';
-      position: absolute;
-      bottom: -1px;
-      right: -1px;
-      width: 8px;
-      height: 8px;
-      border-bottom: 2px solid #00f0ff;
-      border-right: 2px solid #00f0ff;
-      pointer-events: none;
-    }
-    
-    @keyframes pulse-danger {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
-      50% { box-shadow: 0 0 25px 5px rgba(239, 68, 68, 0.7); }
-    }
-    .pulse-danger { animation: pulse-danger 1.4s infinite; }
-
-    @keyframes pulse-cyan {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.4); }
-      50% { box-shadow: 0 0 16px 2px rgba(0, 240, 255, 0.6); }
-    }
-    .pulse-cyan { animation: pulse-cyan 2s infinite; }
-
-    .toggle-switch {
-      position: relative;
-      width: 48px;
-      height: 26px;
-      border-radius: 13px;
-      cursor: pointer;
-      transition: all 0.25s ease;
-    }
-    .toggle-switch .toggle-dot {
-      position: absolute;
-      top: 3px;
-      left: 3px;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      transition: all 0.25s ease;
-    }
-    .toggle-switch.active .toggle-dot { transform: translateX(22px); }
-
-    .badge-matrix {
-      display: inline-flex;
-      align-items: center;
-      padding: 1px 7px;
-      border-radius: 4px;
-      font-size: 0.68rem;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      font-family: 'JetBrains Mono', monospace;
-    }
-    
-    .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
-    .fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(4px); }
-  </style>
+  <link rel="stylesheet" href="console.css?v=3.0.0">
+  <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script defer src="app.js?v=3.0.0"></script>
 </head>
-<body class="text-gray-200 font-sans min-h-screen overflow-hidden">
-
-<div id="app" class="flex flex-col h-screen select-none">
-
-  <!-- ========== Top Navigation: COSMO Mecha Mission Control ========== -->
-  <header class="flex items-center justify-between px-4 py-2 bg-dsp-surface/90 border-b border-dsp-border flex-shrink-0 backdrop-blur-md z-30">
-    <div class="flex items-center gap-3">
-      <!-- Dyson Sphere Hex Emblem -->
-      <div class="relative flex items-center justify-center w-8 h-8 rounded bg-dsp-card border border-dsp-cyan/40 shadow-[0_0_12px_rgba(0,240,255,0.25)]">
-        <span class="text-dsp-cyan text-xl leading-none animate-pulse">⬢</span>
-      </div>
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="text-base font-bold tracking-wider font-hud text-white uppercase">Spherewright</span>
-          <span class="text-[10px] px-1.5 py-0.5 rounded bg-dsp-cyan/15 text-dsp-cyan font-mono border border-dsp-cyan/30">DSP COSMO</span>
-          <!-- Version Badge with Rollback click -->
-          <button @click="showVersionModal = true" class="text-[10px] px-2 py-0.5 rounded bg-dsp-card text-dsp-gold hover:text-white hover:bg-dsp-card-hover font-mono border border-dsp-gold/40 flex items-center gap-1 transition" title="点击查看版本与回滚记录">
-            <span>{{ version }}</span>
-            <span class="text-[9px] text-dsp-muted">▼</span>
-          </button>
-        </div>
-        <div class="text-[10px] text-dsp-muted font-mono tracking-tight flex items-center gap-2">
-          <span>CENTREBRAIN UPLINK // 戴森球计划主脑控制台</span>
-          <span class="text-dsp-cyan/40">|</span>
-          <span class="text-gray-400">SESSION: {{ status?.planet?.sessionId ? status.planet.sessionId.substring(0,8) : 'DISPATCHING' }}</span>
-        </div>
-      </div>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
+  <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 10h6M9 14h6M9 18h3"/></symbol>
+  <symbol id="i-ledger" viewBox="0 0 24 24"><path d="M6 3h13v18H6a3 3 0 0 1 0-6h13M6 3a3 3 0 0 0-3 3v12M8 7h7M8 10h5"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14A8.7 8.7 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 0 0-14-4L3 9m0-6v6h6M4 14a8 8 0 0 0 14 4l3-3m0 6v-6h-6"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+</svg>
+<div id="app" class="shell" v-cloak>
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true"><circle cx="18" cy="18" r="12" stroke="currentColor" stroke-width="1.5"/><ellipse cx="18" cy="18" rx="6" ry="12" stroke="currentColor" stroke-width="1.5" transform="rotate(35 18 18)"/><path d="M5 22c7-6 18-8 27-5" stroke="currentColor" stroke-width="1.5"/><circle cx="29" cy="12" r="3" fill="currentColor"/></svg>
+      <div><strong>Spherewright</strong><small>戴森球计划 · AI 控制台</small></div>
     </div>
-
-    <!-- Center System Status Badges -->
-    <div class="hidden md:flex items-center gap-3 text-xs font-mono">
-      <!-- WebSocket Live Pill -->
-      <div class="flex items-center gap-2 bg-dsp-card px-3 py-1 rounded-full border border-dsp-border-subtle">
-        <span :class="['w-2 h-2 rounded-full', wsConnected ? 'bg-dsp-cyan pulse-cyan' : 'bg-dsp-danger']"></span>
-        <span :class="wsConnected ? 'text-dsp-cyan' : 'text-dsp-danger'">{{ wsConnected ? 'LIVE TELEMETRY' : 'OFFLINE' }}</span>
-      </div>
-
-      <!-- Controlled Write Safety Status -->
-      <div v-if="writeEnabled" class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-950/70 text-red-300 border border-red-700/80 shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-        <span class="animate-ping w-1.5 h-1.5 rounded-full bg-red-400"></span>
-        <span class="font-bold">WRITE GATE UNLOCKED</span>
-      </div>
-      <div v-else class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-dsp-card text-dsp-muted border border-dsp-border-subtle">
-        <span>🔒 READ ONLY MODE</span>
-      </div>
-
-      <!-- Emergency State Pill -->
-      <div v-if="emergencyStopped" class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-600 text-white font-bold pulse-danger">
-        <span>🛑 PAUSED (HALTED)</span>
-      </div>
-    </div>
-
-    <!-- Right Controls: Quick metrics & Refresh -->
-    <div class="flex items-center gap-3 text-xs font-mono">
-      <div class="text-right hidden sm:block">
-        <div class="text-[10px] text-dsp-muted">DATABASE LEDGER</div>
-        <div class="text-gray-300 font-bold text-[11px]">{{ status?.database ? 'ONLINE (ACTIVE)' : 'SYNCING' }}</div>
-      </div>
-      <button @click="refreshAll" class="p-1.5 rounded bg-dsp-card hover:bg-dsp-card-hover border border-dsp-border text-dsp-cyan hover:text-white transition" title="手动同步刷新">
-        <span :class="['inline-block', isRefreshing ? 'animate-spin' : '']">⟳</span>
+    <nav aria-label="控制台导航">
+      <button v-for="view in views" :key="view.id" :class="{active: activeView === view.id}" :aria-current="activeView === view.id ? 'page' : undefined" @click="activeView = view.id">
+        <svg class="icon" aria-hidden="true"><use :href="'#i-' + view.icon"/></svg>{{ view.name }}
+        <span v-if="view.id === 'tasks'" class="count mono">{{ tasks.length }}</span>
       </button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="connection"><span :class="['dot', wsConnected ? 'live' : 'offline']"></span>{{ wsConnected ? '实时通道已连接' : '实时通道重连中' }}<p>状态每 5 秒同步 · 账本每 10 秒更新</p></div>
+      <button class="version-button" @click="openRelease">WebUI <span class="mono">{{ version }}</span></button>
     </div>
-  </header>
-
-  <!-- ========== Main HUD Grid (4 balanced sci-fi telemetry panels) ========== -->
-  <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-2 p-2 bg-transparent overflow-hidden">
-
-    <!-- ==================== PANEL 1: MECHA TELEMETRY & WORLD ==================== -->
-    <section class="hud-panel rounded-lg flex flex-col overflow-hidden">
-      <!-- Panel Header -->
-      <div class="px-3.5 py-2 border-b border-dsp-border flex items-center justify-between bg-dsp-surface/50">
-        <div class="flex items-center gap-2">
-          <span class="text-dsp-cyan font-hud text-sm font-bold tracking-wider uppercase">01 // MECHA TELEMETRY & WORLD</span>
-          <span class="text-xs text-dsp-muted">伊卡洛斯遥测与天体状态</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="w-1.5 h-1.5 rounded-full bg-dsp-cyan"></span>
-          <span class="text-[10px] text-dsp-muted font-mono">5s Auto Sync</span>
-        </div>
-      </div>
-
-      <!-- Panel Body -->
-      <div class="p-3.5 overflow-y-auto flex-1 space-y-3 text-xs" v-if="status">
-        
-        <!-- Top Cards: Planet, Coordinates, Core Energy, Logistics Bag -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <!-- Planet Card -->
-          <div class="bg-dsp-card/90 rounded p-2.5 border border-dsp-border-subtle hover:border-dsp-cyan/40 transition">
-            <div class="text-dsp-muted text-[10px] font-hud uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>LOCAL PLANET // 天体</span>
-              <span class="text-dsp-cyan">🪐</span>
-            </div>
-            <div class="font-hud text-lg font-bold text-dsp-cyan leading-tight">
-              {{ status.planet?.localPlanetId ? 'PLANET #' + status.planet.localPlanetId : 'ORBITING' }}
-            </div>
-            <div class="text-[10px] text-dsp-muted mt-1 font-mono truncate">
-              {{ status.planet?.peacefulMode ? 'Peaceful Mode' : 'Standard Cluster' }}
-            </div>
-          </div>
-
-          <!-- Mecha Coordinates -->
-          <div class="bg-dsp-card/90 rounded p-2.5 border border-dsp-border-subtle hover:border-dsp-cyan/40 transition">
-            <div class="text-dsp-muted text-[10px] font-hud uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>POSITION // 坐标</span>
-              <span class="text-dsp-emerald">📍</span>
-            </div>
-            <div class="font-mono text-xs font-bold text-gray-200">
-              <span v-if="status.icarus?.position">
-                X:{{ Math.round(status.icarus.position.x || 0) }} Y:{{ Math.round(status.icarus.position.y || 0) }}
-              </span>
-              <span v-else class="text-dsp-muted">Grounded</span>
-            </div>
-            <div class="text-[10px] text-dsp-emerald font-mono mt-1 flex items-center gap-1">
-              <span class="w-1 h-1 rounded-full bg-dsp-emerald animate-pulse"></span>
-              <span>{{ status.icarus?.isOnPlanet ? 'SURFACE LOCK' : 'DEEP SPACE' }}</span>
-            </div>
-          </div>
-
-          <!-- Core Energy Gauge -->
-          <div class="bg-dsp-card/90 rounded p-2.5 border border-dsp-border-subtle hover:border-dsp-cyan/40 transition">
-            <div class="text-dsp-muted text-[10px] font-hud uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>CORE ENERGY // 能量槽</span>
-              <span class="text-dsp-gold">⚡</span>
-            </div>
-            <div class="font-mono text-xs font-bold text-dsp-gold">
-              {{ status.icarus?.coreEnergyRatio ? (status.icarus.coreEnergyRatio * 100).toFixed(1) + '%' : (status.icarus?.coreEnergy ? status.icarus.coreEnergy + ' J' : 'NOMINAL 100%') }}
-            </div>
-            <!-- Energy Bar -->
-            <div class="w-full bg-dsp-bg rounded-full h-1.5 mt-1.5 overflow-hidden border border-dsp-border-subtle">
-              <div 
-                class="bg-gradient-to-r from-dsp-emerald via-dsp-cyan to-dsp-gold h-full rounded-full transition-all duration-700" 
-                :style="{ width: (status.icarus?.coreEnergyRatio ? (status.icarus.coreEnergyRatio * 100) : 100) + '%' }">
-              </div>
-            </div>
-          </div>
-
-          <!-- Logistics Backpack -->
-          <div class="bg-dsp-card/90 rounded p-2.5 border border-dsp-border-subtle hover:border-dsp-cyan/40 transition">
-            <div class="text-dsp-muted text-[10px] font-hud uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>INVENTORY // 行囊物资</span>
-              <span class="text-dsp-purple">📦</span>
-            </div>
-            <div class="font-hud text-lg font-bold text-dsp-purple leading-tight">
-              {{ status.icarus?.inventoryCount ?? '0' }} <span class="text-[10px] text-dsp-muted font-mono font-normal">SLOTS</span>
-            </div>
-            <div class="text-[10px] text-dsp-muted mt-1 font-mono">
-              Mecha Cargo Hold
-            </div>
-          </div>
-        </div>
-
-        <!-- CentreBrain & Provider Specs -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <div class="bg-dsp-card/70 rounded p-2.5 border border-dsp-border-subtle">
-            <div class="text-dsp-muted text-[10px] font-hud uppercase tracking-wider mb-1">
-              CENTREBRAIN MODEL // 调度大模型
-            </div>
-            <div class="font-mono text-xs font-semibold text-dsp-cyan flex items-center justify-between">
-              <span>{{ status.provider_model }}</span>
-              <span class="text-[10px] px-1.5 py-0.2 rounded bg-dsp-cyan/10 text-dsp-cyan">{{ status.provider_type }}</span>
-            </div>
-            <div class="text-[10px] text-dsp-muted mt-1 flex items-center gap-1.5 font-mono">
-              <span :class="['w-1.5 h-1.5 rounded-full', status.provider_key_present ? 'bg-dsp-emerald' : 'bg-dsp-danger']"></span>
-              <span>{{ status.provider_key_present ? 'API Authentication Ready' : 'Key Absent (Safe Read-Only)' }}</span>
-            </div>
-          </div>
-
-          <div class="bg-dsp-card/70 rounded p-2.5 border border-dsp-border-subtle">
-            <div class="text-dsp-muted text-[10px] font-hud uppercase tracking-wider mb-1">
-              MCP PROTOCOL & RUNTIME // 原生通道
-            </div>
-            <div class="font-mono text-xs text-gray-300 truncate" :title="status.mcp_command">
-              {{ status.mcp_command }}
-            </div>
-            <div class="text-[10px] text-dsp-muted mt-1 font-mono flex items-center justify-between">
-              <span>Python {{ status.python }} ({{ status.platform }})</span>
-              <span class="text-dsp-emerald">HEALTH: {{ status.mcp_status?.writeHealth || 'ONLINE' }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Safety Interlocks Row -->
-        <div class="grid grid-cols-3 gap-2 text-center font-mono">
-          <div class="bg-dsp-card/70 rounded p-2 border border-dsp-border-subtle">
-            <div class="text-[9px] text-dsp-muted uppercase">CONFIG ALLOW WRITE</div>
-            <span :class="['badge-matrix mt-1', status.allow_write ? 'bg-amber-900/40 text-amber-300 border border-amber-600/40' : 'bg-gray-800 text-gray-400 border border-gray-700']">
-              {{ status.allow_write ? 'ALLOW' : 'DENY' }}
-            </span>
-          </div>
-          <div class="bg-dsp-card/70 rounded p-2 border border-dsp-border-subtle">
-            <div class="text-[9px] text-dsp-muted uppercase">INTERLOCK GATE</div>
-            <span :class="['badge-matrix mt-1', status.write_enabled ? 'bg-red-950/60 text-red-300 border border-red-700/60' : 'bg-gray-800 text-gray-400 border border-gray-700']">
-              {{ status.write_enabled ? 'UNLOCKED' : 'LOCKED' }}
-            </span>
-          </div>
-          <div class="bg-dsp-card/70 rounded p-2 border border-dsp-border-subtle">
-            <div class="text-[9px] text-dsp-muted uppercase">PAUSE FILE FLAG</div>
-            <span :class="['badge-matrix mt-1', status.pause_file_exists ? 'bg-red-950/60 text-red-300 border border-red-700/60' : 'bg-emerald-950/40 text-emerald-300 border border-emerald-700/40']">
-              {{ status.pause_file_exists ? 'HALTED' : 'CLEAR' }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Pending Intent High-Contrast Alert -->
-        <div v-if="status.pending" class="bg-gradient-to-r from-amber-950/60 to-dsp-card rounded p-3 border border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
-          <div class="text-amber-400 font-bold mb-1 flex items-center justify-between font-hud uppercase tracking-wider text-sm">
-            <span class="flex items-center gap-1.5">
-              <span>⚠</span>
-              <span>UNRECONCILED INTENT // 待核销意图</span>
-            </span>
-            <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">PREPARE STAGE</span>
-          </div>
-          <pre class="text-[11px] text-amber-200/90 font-mono overflow-x-auto whitespace-pre-wrap max-h-28 bg-black/40 p-2 rounded border border-amber-500/30">{{ JSON.stringify(status.pending, null, 2) }}</pre>
-        </div>
-      </div>
-
-      <div v-else class="p-8 text-dsp-muted text-xs flex flex-col items-center justify-center flex-1 font-mono space-y-2">
-        <div class="text-dsp-cyan text-lg animate-spin">⬢</div>
-        <div>Uplinking to DSP telemetry stream...</div>
-      </div>
-    </section>
-
-    <!-- ==================== PANEL 2: COMMAND ORBIT & SAFETY GATE ==================== -->
-    <section class="hud-panel rounded-lg flex flex-col overflow-hidden">
-      <!-- Panel Header -->
-      <div class="px-3.5 py-2 border-b border-dsp-border flex items-center justify-between bg-dsp-surface/50">
-        <div class="flex items-center gap-2">
-          <span class="text-dsp-cyan font-hud text-sm font-bold tracking-wider uppercase">02 // COMMAND ORBIT & SAFETY GATE</span>
-          <span class="text-xs text-dsp-muted">指令调度中枢与安全互锁</span>
-        </div>
-        <div class="text-[10px] font-mono text-dsp-muted">
-          SAFETY BOUNDARY: ENFORCED
-        </div>
-      </div>
-
-      <!-- Panel Body -->
-      <div class="p-3.5 overflow-y-auto flex-1 space-y-3.5 text-xs">
-        
-        <!-- Controlled Write Interlock Switch -->
-        <div :class="['rounded-lg p-3 border transition-all duration-300', writeEnabled ? 'bg-red-950/30 border-red-700/80 shadow-[0_0_18px_rgba(239,68,68,0.22)]' : 'bg-dsp-card/80 border-dsp-border-subtle']">
-          <div class="flex items-center justify-between">
-            <div class="space-y-0.5">
-              <div class="text-xs font-bold font-hud uppercase tracking-wider flex items-center gap-2">
-                <span :class="writeEnabled ? 'text-red-400' : 'text-gray-200'">SAFETY INTERLOCK // 受控写入安全开关</span>
-                <span v-if="writeEnabled" class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-red-500/20 text-red-300 animate-pulse">ENABLED</span>
-              </div>
-              <div class="text-[11px] text-dsp-muted">
-                {{ writeEnabled ? '⚠ 写入开关已激活：允许调度制造、建造、星际航行等游戏真实动作' : '默认处于只读观测模式：所有修改操作均在底层被安全拦截' }}
-              </div>
-            </div>
-            <div
-              :class="['toggle-switch', writeEnabled ? 'bg-red-600 active' : 'bg-gray-700/80']"
-              @click="toggleWrite"
-              title="切换受控写入模式"
-            >
-              <div :class="['toggle-dot', writeEnabled ? 'bg-white shadow-[0_0_6px_#ffffff]' : 'bg-gray-400']"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Risk Confirmation Dialog Modal -->
-        <div v-if="showWriteConfirm" class="fixed inset-0 bg-black/85 z-50 flex items-center justify-center backdrop-blur-sm p-4" @click.self="showWriteConfirm = false">
-          <div class="bg-dsp-surface border border-red-600 rounded-lg p-5 max-w-md w-full shadow-[0_0_30px_rgba(239,68,68,0.35)] space-y-3 font-sans">
-            <div class="text-red-400 text-base font-bold font-hud uppercase tracking-wider flex items-center gap-2 border-b border-red-900/50 pb-2">
-              <span class="text-lg">⚠</span>
-              <span>HIGH RISK PROTOCOL CONFIRMATION // 高风险写入确认</span>
-            </div>
-            <p class="text-xs text-gray-300 leading-relaxed">
-              您正在解锁伊卡洛斯机甲的受控写入权限。解锁后，智能体有权通过 MCP 协议在《戴森球计划》中执行物理动作（包含手工制造、传送带搭建、分拣器配置与航行）。
-            </p>
-            <p class="text-[11px] text-dsp-muted font-mono leading-relaxed bg-black/30 p-2.5 rounded border border-dsp-border-subtle">
-              Every dispatched action will consume Icarus materials or core energy. Ensure you understand planetary safety requirements.
-            </p>
-            <div class="flex gap-2.5 justify-end pt-2">
-              <button @click="showWriteConfirm = false" class="px-3.5 py-1.5 rounded bg-gray-800 hover:bg-gray-700 text-xs font-mono transition">
-                CANCEL / 取消
-              </button>
-              <button @click="confirmWrite" class="px-4 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-xs font-mono transition shadow-[0_0_10px_rgba(239,68,68,0.5)]">
-                CONFIRM UNLOCK / 确认解锁
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Task Dispatch Input Box -->
-        <div class="bg-dsp-card/80 rounded-lg p-3 border border-dsp-border-subtle space-y-2">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-hud uppercase tracking-wider font-bold text-gray-200">DISPATCH MISSION GOAL // 新建任务目标</span>
-            <span v-if="!writeEnabled" class="text-[10px] text-dsp-gold font-mono">🔒 需要解锁写入开关</span>
-          </div>
-          <div class="flex gap-2">
-            <input
-              v-model="taskGoal"
-              :disabled="!writeEnabled"
-              type="text"
-              placeholder="例如：观察当前电力网并汇报配方科技树..."
-              class="flex-1 bg-dsp-bg border border-dsp-border/60 rounded px-3 py-1.5 text-xs outline-none focus:border-dsp-cyan font-mono transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-200 placeholder:text-gray-600"
-              @keyup.enter="createTask"
-            />
-            <button
-              @click="createTask"
-              :disabled="!writeEnabled || !taskGoal.trim()"
-              class="px-4 py-1.5 bg-dsp-cyan text-dsp-bg font-hud font-bold text-xs uppercase tracking-wider rounded hover:bg-dsp-cyan/90 transition disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_0_8px_rgba(0,240,255,0.3)] flex items-center gap-1"
-            >
-              <span>SEND / 发送</span>
-            </button>
-          </div>
-          <!-- Quick goal presets -->
-          <div class="flex flex-wrap gap-1.5 pt-1">
-            <button 
-              v-for="preset in quickGoalPresets" :key="preset"
-              :disabled="!writeEnabled"
-              @click="taskGoal = preset"
-              class="text-[10px] font-mono px-2 py-0.5 rounded bg-dsp-surface hover:bg-dsp-card border border-dsp-border-subtle text-dsp-muted hover:text-dsp-cyan transition disabled:opacity-30"
-            >
-              {{ preset }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Instant Emergency Stop Button -->
-        <div class="bg-dsp-card/80 rounded-lg p-3 border border-dsp-border-subtle">
-          <div class="text-xs font-hud uppercase tracking-wider font-bold text-gray-300 mb-2 flex items-center justify-between">
-            <span>INSTANT REACTOR INTERRUPT // 即时紧急停止</span>
-            <span class="text-[10px] font-mono text-dsp-muted">SIGNAL: PAUSE</span>
-          </div>
-          <button
-            v-if="!emergencyStopped"
-            @click="emergencyStop"
-            class="w-full py-2.5 bg-gradient-to-r from-red-700 via-red-600 to-red-700 hover:from-red-600 hover:to-red-600 text-white font-hud font-bold text-sm tracking-wider uppercase rounded transition transform active:scale-98 shadow-[0_0_15px_rgba(239,68,68,0.35)] flex items-center justify-center gap-2"
-          >
-            <span class="text-base leading-none">🛑</span>
-            <span>EMERGENCY STOP (紧急停止)</span>
-          </button>
-          <button
-            v-else
-            @click="emergencyReset"
-            class="w-full py-2.5 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-black font-hud font-bold text-sm tracking-wider uppercase rounded transition pulse-danger flex items-center justify-center gap-2"
-          >
-            <span>🔄</span>
-            <span>CLEAR EMERGENCY PAUSE (解除急停)</span>
-          </button>
-          <div v-if="emergencyStopped" class="text-[11px] text-red-400 mt-2 font-mono flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping"></span>
-            <span>PAUSE active. Agent decision loops and ledger commits halted.</span>
-          </div>
-        </div>
-
-        <!-- Task State Machine Tracker -->
-        <div class="bg-dsp-card/80 rounded-lg p-3 border border-dsp-border-subtle space-y-2">
-          <div class="text-xs font-hud uppercase tracking-wider font-bold text-gray-200 flex items-center justify-between">
-            <span>TASK STATE MACHINE // 任务流状态机</span>
-            <span class="text-[10px] font-mono text-dsp-cyan">{{ tasks.length }} TASKS RECORDED</span>
-          </div>
-          <div class="space-y-1.5 max-h-40 overflow-y-auto pr-1" v-if="tasks.length">
-            <div
-              v-for="task in tasks" :key="task.id"
-              class="bg-dsp-bg/90 rounded p-2 border border-dsp-border-subtle text-xs space-y-1"
-            >
-              <div class="flex items-center justify-between">
-                <span class="font-mono text-dsp-cyan font-bold text-[11px]">#{{ task.id?.substring(0, 8) }}</span>
-                <div class="flex items-center gap-2">
-                  <span :class="['badge-matrix', taskStateColor(task.state)]">{{ task.state }}</span>
-                  <button
-                    v-if="['running', 'waiting_confirmation'].includes(task.state) && writeEnabled"
-                    @click="pauseTask(task.id)"
-                    class="px-2 py-0.5 rounded bg-blue-900/60 hover:bg-blue-800 text-blue-200 text-[9px] font-mono transition"
-                  >PAUSE</button>
-                  <button
-                    v-if="['paused', 'blocked', 'failed'].includes(task.state) && writeEnabled"
-                    @click="resumeTask(task.id)"
-                    class="px-2 py-0.5 rounded bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200 text-[9px] font-mono transition"
-                  >RESUME</button>
-                </div>
-              </div>
-              <div class="text-gray-300 font-mono text-[11px] truncate" :title="task.goal">{{ task.goal }}</div>
-              <div class="flex gap-3 text-[10px] text-dsp-muted font-mono pt-1 border-t border-white/5">
-                <span>Steps: <strong class="text-gray-200">{{ task.steps }}</strong></span>
-                <span>Writes: <strong class="text-gray-200">{{ task.writes }}</strong></span>
-                <span>Budget: <strong class="text-gray-200">{{ task.materials }}</strong></span>
-                <span v-if="task.detail" class="text-dsp-gold truncate">{{ task.detail }}</span>
-              </div>
-            </div>
-          </div>
-          <div v-else class="text-dsp-muted text-[11px] py-4 text-center font-mono">
-            No tasks queued in current cluster session
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- ==================== PANEL 3: SECURE LEDGER FLOW ==================== -->
-    <section class="hud-panel rounded-lg flex flex-col overflow-hidden">
-      <!-- Panel Header -->
-      <div class="px-3.5 py-2 border-b border-dsp-border flex items-center justify-between bg-dsp-surface/50">
-        <div class="flex items-center gap-2">
-          <span class="text-dsp-cyan font-hud text-sm font-bold tracking-wider uppercase">03 // SECURE LEDGER FLOW</span>
-          <span class="text-xs text-dsp-muted">戴森安全账本 (PREPARE ➔ COMMIT ➔ VERIFY)</span>
-        </div>
-        <!-- Filter dropdown -->
-        <div class="flex items-center gap-2 font-mono">
-          <select v-model="ledgerFilter" @change="loadLedger(1)" class="bg-dsp-card border border-dsp-border rounded px-2 py-0.5 text-xs outline-none text-dsp-cyan font-mono">
-            <option value="">All Streams / 全部流</option>
-            <option value="pending">pending (待执行/未核销)</option>
-            <option value="committed">committed (已提交写动作)</option>
-            <option value="verified">verified (已确认核销)</option>
-            <option value="failed">failed (失败/异常)</option>
-            <option value="observation">observation (只读观察)</option>
-            <option value="decision">decision (主脑决策)</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Panel Body: Ledger Table -->
-      <div class="flex-1 overflow-y-auto">
-        <table class="w-full text-xs font-mono">
-          <thead class="sticky top-0 bg-dsp-surface z-10 border-b border-dsp-border">
-            <tr class="text-[10px] text-dsp-muted uppercase font-hud">
-              <th class="px-3 py-1.5 text-left w-12">ID</th>
-              <th class="px-3 py-1.5 text-left w-28">STAGE / MATRIX</th>
-              <th class="px-3 py-1.5 text-left">EVIDENCE & TELEMETRY ENVELOPE</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="event in ledger.events" :key="event.id"
-              class="border-b border-dsp-border-subtle hover:bg-dsp-card/70 cursor-pointer transition"
-              @click="selectedEvent = selectedEvent === event.id ? null : event.id"
-            >
-              <td class="px-3 py-2 text-dsp-muted font-mono">#{{ event.id }}</td>
-              <td class="px-3 py-2">
-                <span :class="['badge-matrix', eventKindColor(event.kind)]">{{ event.kind }}</span>
-              </td>
-              <td class="px-3 py-2 text-gray-300">
-                <div v-if="selectedEvent !== event.id" class="truncate max-w-md text-[11px] text-gray-400 font-mono">
-                  {{ summarizeEvent(event.data) }}
-                </div>
-                <div v-else class="space-y-1.5 my-1">
-                  <div class="text-[10px] text-dsp-cyan font-hud uppercase tracking-wider flex items-center justify-between">
-                    <span>COMPLETE AUDIT ENVELOPE</span>
-                    <button @click.stop="copyEnvelope(event.data)" class="text-[9px] px-1.5 py-0.5 rounded bg-dsp-surface border border-dsp-border text-dsp-muted hover:text-white transition">COPY JSON</button>
-                  </div>
-                  <pre class="text-[10px] text-gray-200 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto bg-black/60 rounded p-2 border border-dsp-border font-mono">{{ JSON.stringify(event.data, null, 2) }}</pre>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!ledger.events.length">
-              <td colspan="3" class="px-3 py-10 text-center text-dsp-muted font-mono">
-                No ledger records matching current criteria
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Panel Footer: Pagination -->
-      <div class="px-3 py-1.5 border-t border-dsp-border flex items-center justify-between text-xs font-mono text-dsp-muted bg-dsp-surface/60 flex-shrink-0">
-        <span>TOTAL: <strong class="text-dsp-cyan">{{ ledger.total }}</strong> EVENTS</span>
-        <div class="flex items-center gap-2">
-          <button @click="loadLedger(ledger.page - 1)" :disabled="ledger.page <= 1" class="px-2 py-0.5 rounded bg-dsp-card hover:bg-dsp-card-hover border border-dsp-border-subtle disabled:opacity-30 transition">PREV</button>
-          <span>PAGE {{ ledger.page }} / {{ Math.max(1, Math.ceil(ledger.total / ledger.pageSize)) }}</span>
-          <button @click="loadLedger(ledger.page + 1)" :disabled="ledger.page >= Math.ceil(ledger.total / ledger.pageSize)" class="px-2 py-0.5 rounded bg-dsp-card hover:bg-dsp-card-hover border border-dsp-border-subtle disabled:opacity-30 transition">NEXT</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- ==================== PANEL 4: LIVE CONSOLE ==================== -->
-    <section class="hud-panel rounded-lg flex flex-col overflow-hidden">
-      <!-- Panel Header -->
-      <div class="px-3.5 py-2 border-b border-dsp-border flex items-center justify-between bg-dsp-surface/50">
-        <div class="flex items-center gap-2">
-          <span class="text-dsp-cyan font-hud text-sm font-bold tracking-wider uppercase">04 // LIVE CONSOLE & STREAM</span>
-          <span class="text-xs text-dsp-muted">实时日志与主脑推流</span>
-        </div>
-        <div class="flex items-center gap-2 font-mono text-xs">
-          <span :class="['w-1.5 h-1.5 rounded-full', wsConnected ? 'bg-dsp-cyan' : 'bg-dsp-danger']"></span>
-          <span class="text-[10px] text-dsp-muted">{{ wsConnected ? 'STREAM ACTIVE' : 'RECONNECTING' }}</span>
-          <button @click="logs = []" class="text-[10px] text-dsp-muted hover:text-white px-2 py-0.5 rounded bg-dsp-card border border-dsp-border-subtle transition">CLEAR</button>
-        </div>
-      </div>
-
-      <!-- Terminal Body -->
-      <div ref="consoleEl" class="flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed bg-black/40 space-y-0.5">
-        <div
-          v-for="(log, i) in filteredLogs" :key="i"
-          :class="['py-0.5 border-b border-white/[0.04]', logRowBg(log.type)]"
-        >
-          <span class="text-dsp-muted text-[10px]">[{{ log.time }}]</span>
-          <span :class="['ml-1.5 font-bold uppercase text-[10px] px-1 py-0.2 rounded', logBadgeStyle(log.type)]">{{ log.type }}</span>
-          <span class="ml-2 text-gray-200 text-[11px] break-all">{{ log.message }}</span>
-        </div>
-        <div v-if="!logs.length" class="text-dsp-muted py-14 text-center text-xs font-mono space-y-1">
-          <div class="text-dsp-cyan text-sm">⬢</div>
-          <div>Awaiting telemetry & action events from CentreBrain websocket stream...</div>
-          <div class="text-[10px] text-dsp-muted">ws://{{ location.host }}/ws/live</div>
-        </div>
-      </div>
-
-      <!-- Terminal Footer: Quick search & status -->
-      <div class="px-3 py-1.5 border-t border-dsp-border flex items-center justify-between text-xs font-mono text-dsp-muted bg-dsp-surface/60 flex-shrink-0">
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] text-dsp-muted">FILTER:</span>
-          <input 
-            v-model="logFilter" 
-            type="text" 
-            placeholder="Type or regex..." 
-            class="bg-dsp-bg border border-dsp-border/40 rounded px-2 py-0.5 text-[10px] text-gray-200 outline-none focus:border-dsp-cyan w-28 sm:w-40"
-          />
-        </div>
-        <div class="text-[10px]">
-          BUFFER: <strong class="text-dsp-cyan">{{ logs.length }}</strong> / 500
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- ========== Version & Rollback Modal ========== -->
-  <div v-if="showVersionModal" class="fixed inset-0 bg-black/85 z-50 flex items-center justify-center backdrop-blur-sm p-4" @click.self="showVersionModal = false">
-    <div class="bg-dsp-surface border border-dsp-cyan rounded-lg p-5 max-w-lg w-full shadow-[0_0_30px_rgba(0,240,255,0.25)] space-y-4 font-sans">
-      <div class="flex items-center justify-between border-b border-dsp-border pb-2.5">
-        <div class="flex items-center gap-2">
-          <span class="text-dsp-cyan text-xl">⬢</span>
-          <div>
-            <div class="text-sm font-bold font-hud uppercase tracking-wider text-white">CONSOLE VERSION & ROLLBACK</div>
-            <div class="text-[11px] text-dsp-muted font-mono">戴森球计划 AI 控制台版本管理与回滚</div>
-          </div>
-        </div>
-        <button @click="showVersionModal = false" class="text-dsp-muted hover:text-white font-mono text-sm">✕</button>
-      </div>
-
-      <!-- Version history table -->
-      <div class="space-y-2 text-xs font-mono">
-        <div class="bg-dsp-card p-3 rounded border border-dsp-cyan/50 space-y-1">
-          <div class="flex items-center justify-between">
-            <span class="text-dsp-cyan font-bold">CURRENT: v2.0.0 (DSP COSMO Edition)</span>
-            <span class="px-1.5 py-0.5 rounded bg-dsp-cyan/20 text-dsp-cyan text-[10px]">ACTIVE</span>
-          </div>
-          <p class="text-gray-300 text-[11px]">
-            全新重构的戴森球计划太空科技风控制台。提供机甲遥测 HUD、受控写入安全开关、四矩阵账本流与实时推流终端。
-          </p>
-        </div>
-
-        <div class="bg-dsp-card/60 p-3 rounded border border-dsp-border-subtle space-y-1">
-          <div class="flex items-center justify-between">
-            <span class="text-gray-300 font-bold">ROLLBACK TARGET: v1.0.0 (Baseline Console)</span>
-            <span class="px-1.5 py-0.5 rounded bg-gray-800 text-dsp-muted text-[10px]">BACKUP READY</span>
-          </div>
-          <p class="text-dsp-muted text-[11px]">
-            初始标准版单页控制台。已完整保存在 <code class="text-dsp-gold">src/sphere_agent/web/index.v1.0.0.html</code>。
-          </p>
-          <div class="pt-1 flex gap-2">
-            <a href="/index.v1.0.0.html" target="_blank" class="text-[10px] text-dsp-cyan hover:underline">
-              🔗 访问 v1.0.0 备份页面 (Open v1.0.0 directly)
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- CLI Rollback instruction -->
-      <div class="text-[10px] font-mono text-dsp-muted bg-black/40 p-2.5 rounded border border-white/5 space-y-1">
-        <div class="text-gray-300 font-bold">Git 一键回滚命令 (CLI Rollback):</div>
-        <code class="text-dsp-gold block select-all">git checkout 1ff41cf -- src/sphere_agent/web/index.html</code>
-      </div>
-
-      <div class="flex justify-end pt-1">
-        <button @click="showVersionModal = false" class="px-4 py-1.5 rounded bg-dsp-card hover:bg-dsp-card-hover border border-dsp-border text-xs font-mono transition text-white">
-          CLOSE / 关闭
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <div class="breadcrumb"><span>控制台</span><span>/</span><b>{{ views.find(v => v.id === activeView)?.name }}</b></div>
+      <div class="actions">
+        <span :class="['badge', writeEnabled ? 'warning' : 'neutral']">{{ writeEnabled ? '受控写入已开启' : '只读观察模式' }}</span>
+        <span v-if="emergencyStopped" class="badge danger">急停中</span>
+        <button class="icon-button" @click="toggleTheme" :title="theme === 'dark' ? '切换为浅色模式' : '切换为深色模式'" :aria-label="theme === 'dark' ? '切换为浅色模式' : '切换为深色模式'">
+          <svg class="icon" aria-hidden="true"><use :href="theme === 'dark' ? '#i-sun' : '#i-moon'"/></svg>
         </button>
+        <button @click="refreshAll" :disabled="isRefreshing"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>{{ isRefreshing ? '同步中…' : '刷新' }}</button>
       </div>
-    </div>
-  </div>
-
-  <!-- ========== Toast Notifications ========== -->
-  <div class="fixed bottom-4 right-4 z-50 space-y-2">
-    <transition-group name="fade">
-      <div
-        v-for="toast in toasts" :key="toast.id"
-        :class="['rounded px-4 py-2.5 text-xs shadow-2xl border max-w-sm font-mono flex items-center gap-2 backdrop-blur-md',
-          toast.type === 'error' ? 'bg-red-950/90 border-red-600 text-red-200' :
-          toast.type === 'success' ? 'bg-emerald-950/90 border-emerald-600 text-emerald-200' :
-          'bg-dsp-surface/90 border-dsp-border text-gray-200']"
-      >
-        <span>{{ toast.type === 'error' ? '🛑' : toast.type === 'success' ? '✔' : 'ℹ' }}</span>
-        <span class="flex-1">{{ toast.message }}</span>
+    </header>
+    <main>
+      <div class="page-heading">
+        <div><h1>{{ {overview: '运行总览', tasks: '任务调度', ledger: '安全账本', logs: '实时日志'}[activeView] }}</h1><p>{{ {overview: '观察机甲与世界状态，让每一步行动都有据可循。', tasks: '下达目标，跟踪执行进度与资源消耗。', ledger: '从意图准备到执行核销，追溯每一次决策与动作。', logs: '持续接收智能体事件，查看最近 500 条运行记录。'}[activeView] }}</p></div>
+        <time>{{ lastSync ? '最近同步 ' + lastSync : '等待首次同步' }}</time>
       </div>
-    </transition-group>
+      <div v-if="statusError" class="notice danger" role="alert"><span>状态同步失败，当前显示最近一次数据。请检查服务连接后刷新。</span><button @click="refreshAll" :disabled="isRefreshing">重新同步</button></div>
+      <div v-if="emergencyStopped" class="notice danger" role="alert"><span><strong>紧急停止已激活</strong> · 智能体决策与写入已暂停。</span><button @click="emergencyReset">解除急停</button></div>
+      <template v-if="activeView === 'overview'">
+        <section class="metrics" aria-label="机甲遥测摘要">
+          <div class="metric"><p class="metric-label">当前天体</p><div class="metric-value">{{ status?.planet?.localPlanetId != null ? '#' + status.planet.localPlanetId : '—' }}</div><p class="metric-note">{{ !status?.planet ? '等待世界观测' : status.planet.peacefulMode == null ? '模式未知' : status.planet.peacefulMode ? '和平模式' : '标准模式' }}</p></div>
+          <div class="metric"><p class="metric-label">机甲核心能量</p><div class="metric-value mono">{{ energyLabel }}</div><div v-if="energyRatio !== null" class="progress" role="progressbar" aria-label="机甲核心能量" :aria-valuenow="Math.round(energyRatio * 100)" aria-valuemin="0" aria-valuemax="100"><span :style="{width: energyRatio * 100 + '%'}"></span></div><p v-else class="metric-note">等待能量观测</p></div>
+          <div class="metric"><p class="metric-label">行囊物资</p><div class="metric-value mono">{{ status?.icarus?.inventoryCount ?? '—' }} <span class="small muted">种</span></div><p class="metric-note">机甲库存条目</p></div>
+          <div class="metric"><p class="metric-label">已记录任务</p><div class="metric-value mono">{{ status ? tasks.length : '—' }}</div><p class="metric-note">{{ tasks.filter(t => t.state === 'running').length }} 个执行中 · {{ tasks.filter(t => t.state === 'paused').length }} 个已暂停</p></div>
+        </section>
+        <div class="dashboard">
+          <div class="stack">
+            <section class="panel"><div class="panel-head"><div><h2>智能体与运行环境</h2><p>当前模型、原生通道及机甲位置</p></div><span :class="['badge', status ? 'success' : 'neutral']">{{ status ? '服务已连接' : '等待服务' }}</span></div>
+              <div class="panel-body"><dl class="facts">
+                <div><dt>调度模型</dt><dd>{{ status?.provider_model || '—' }} <span class="muted">{{ status?.provider_type || '' }}</span></dd></div>
+                <div><dt>API 认证</dt><dd :class="status?.provider_key_present ? 'success badge' : 'neutral badge'">{{ status ? (status.provider_key_present ? '密钥已配置' : '未配置密钥') : '待同步' }}</dd></div>
+                <div><dt>MCP 通道</dt><dd class="mono">{{ status?.mcp_command || '—' }}</dd></div>
+                <div><dt>写入健康状态</dt><dd>{{ status?.mcp_status?.writeHealth ?? status?.planet?.writeHealth ?? '待观测' }}</dd></div>
+                <div><dt>运行环境</dt><dd class="mono">{{ status ? 'Python ' + status.python + ' · ' + status.platform : '—' }}</dd></div>
+                <div><dt>机甲坐标</dt><dd class="mono">{{ positionLabel }}</dd></div>
+                <div><dt>机甲位置状态</dt><dd>{{ status?.icarus?.isOnPlanet == null ? '待观测' : status.icarus.isOnPlanet ? '行星表面' : '太空中' }}</dd></div>
+                <div><dt>当前会话</dt><dd class="mono">{{ status?.planet?.sessionId || '待观测' }}</dd></div>
+              </dl></div>
+            </section>
+            <section class="panel"><div class="panel-head"><h2>最近任务</h2><button class="text-button" @click="activeView = 'tasks'">查看全部任务</button></div>
+              <div v-for="task in tasks.slice(0, 3)" :key="task.id" class="task"><div class="row spread"><span class="mono small muted">#{{ task.id?.slice(0,8) }}</span><span :class="['badge', tone(task.state)]">{{ task.state }}</span></div><p class="task-goal">{{ task.goal }}</p></div>
+              <div v-if="!tasks.length" class="empty"><strong>还没有任务</strong>在任务调度中输入目标，开始一次新的行动。</div>
+            </section>
+          </div>
+          <div class="stack">
+            <section class="panel"><div class="panel-head"><h2>安全控制</h2><span :class="['badge', writeEnabled ? 'warning' : 'success']">{{ writeEnabled ? '可写入' : '只读' }}</span></div><div class="panel-body">
+              <div class="row spread"><h3>受控写入</h3><button :class="['switch', {on: writeEnabled}]" role="switch" :aria-checked="writeEnabled" aria-label="受控写入开关" :disabled="!status" @click="openWriteDialog"><span></span></button></div>
+              <p class="safety-copy">开启后，智能体可执行制造、建造与航行等游戏动作。默认保持只读，开启前需确认。</p>
+              <div class="interlocks"><div class="interlock"><span class="muted">配置允许写入</span><span :class="['badge', status?.allow_write ? 'warning' : 'neutral']">{{ status ? (status.allow_write ? '允许' : '禁止') : '待同步' }}</span></div><div class="interlock"><span class="muted">运行时写入闸门</span><span :class="['badge', writeEnabled ? 'warning' : 'neutral']">{{ status ? (writeEnabled ? '已解锁' : '已锁定') : '待同步' }}</span></div><div class="interlock"><span class="muted">暂停文件</span><span :class="['badge', status?.pause_file_exists ? 'danger' : 'neutral']">{{ status ? (status.pause_file_exists ? '存在' : '未设置') : '待同步' }}</span></div></div>
+              <div class="emergency" style="margin-top:24px"><button class="danger-button" :disabled="!status" @click="emergencyStopped ? emergencyReset() : emergencyStop()"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>{{ emergencyStopped ? '解除紧急停止' : '紧急停止' }}</button><p class="small muted" style="margin-top:10px">立即暂停智能体决策与账本提交。</p></div>
+            </div></section>
+            <section class="panel"><div class="panel-head"><h2>待核销意图</h2><span :class="['badge', status?.pending ? 'warning' : 'neutral']">{{ status?.pending ? '待处理' : status ? '无待核销' : '待同步' }}</span></div><div v-if="status?.pending" class="panel-body"><p class="small muted">以下写入意图尚未完成核销，请在继续操作前查看。</p><pre>{{ JSON.stringify(status.pending, null, 2) }}</pre></div><div v-else class="empty">{{ status ? '暂无待核销意图' : '等待账本状态同步' }}</div></section>
+          </div>
+        </div>
+      </template>
+      <div v-if="activeView === 'tasks'" class="stack">
+        <section class="panel"><div class="panel-head"><h2>新建任务</h2><button v-if="!writeEnabled" class="text-button" :disabled="!status" @click="openWriteDialog">开启受控写入</button><span v-else class="badge warning">受控写入已开启</span></div><form class="panel-body composer" @submit.prevent="createTask"><label for="task-goal">这次希望智能体完成什么？</label><textarea id="task-goal" v-model="taskGoal" :disabled="!writeEnabled || busy" placeholder="例如：巡检电力网与机甲能量"></textarea><div class="row"><button v-for="preset in quickGoalPresets" :key="preset" type="button" class="preset" :disabled="!writeEnabled || busy" @click="taskGoal = preset">{{ preset }}</button></div><div class="row spread composer-footer"><span class="small muted">{{ writeEnabled ? '任务将交给现有智能体流程执行。' : '当前为只读模式，请先开启受控写入。' }}</span><button class="primary" type="submit" :disabled="!writeEnabled || !taskGoal.trim() || busy">{{ busy ? '提交中…' : '下达任务' }}<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></button></div></form></section>
+        <section class="panel"><div class="panel-head"><h2>任务记录</h2><span class="small muted">共 {{ tasks.length }} 个任务</span></div><div v-for="task in tasks" :key="task.id" class="task"><div class="row spread"><span class="mono small muted">#{{ task.id?.slice(0,8) }}</span><div class="row"><span :class="['badge', tone(task.state)]">{{ task.state }}</span><button v-if="['running','waiting_confirmation'].includes(task.state) && writeEnabled" @click="pauseTask(task.id)">暂停</button><button v-if="['paused','blocked','failed'].includes(task.state) && writeEnabled" @click="resumeTask(task.id)">恢复</button></div></div><p class="task-goal">{{ task.goal }}</p><div class="stats mono"><span>步骤 {{ task.steps ?? '—' }}</span><span>写入 {{ task.writes ?? '—' }}</span><span>物料 {{ task.materials ?? '—' }}</span></div><p v-if="task.detail" class="detail">{{ task.detail }}</p></div><div v-if="!tasks.length" class="empty"><strong>准备好第一个目标了吗？</strong>在上方输入任务，或选择一个快捷目标。</div></section>
+      </div>
+      <section v-if="activeView === 'ledger'" class="panel">
+        <div class="panel-head"><div><h2>事件记录</h2><p>PREPARE → COMMIT → VERIFY</p></div><select v-model="ledgerFilter" @change="loadLedger(1)" aria-label="按账本状态筛选"><option value="">全部事件</option><option value="pending">待执行 / 未核销</option><option value="committed">已提交动作</option><option value="verified">已核销</option><option value="failed">失败 / 异常</option><option value="observation">只读观察</option><option value="decision">智能体决策</option></select></div>
+        <div class="table-scroll"><table><thead><tr><th>事件 ID</th><th>阶段 / 类型</th><th>证据与事件数据</th></tr></thead><tbody><tr v-for="event in ledger.events" :key="event.id"><td class="mono muted">#{{ event.id }}</td><td><span :class="['badge', tone(event.kind)]">{{ event.kind }}</span></td><td><div class="event-summary mono">{{ summarizeEvent(event.data) }}</div><button class="text-button" :aria-expanded="selectedEvent === event.id" @click="selectedEvent = selectedEvent === event.id ? null : event.id">{{ selectedEvent === event.id ? '收起详情' : '展开 JSON' }}</button><div v-if="selectedEvent === event.id" class="event-detail"><button @click="copyEnvelope(event.data)">复制 JSON</button><pre>{{ JSON.stringify(event.data, null, 2) }}</pre></div></td></tr><tr v-if="!ledger.events.length"><td colspan="3" class="empty">当前筛选下没有事件，请切换筛选或等待新事件。</td></tr></tbody></table></div>
+        <div class="panel-foot row spread"><span>共 <b class="mono">{{ ledger.total }}</b> 条事件</span><div class="row"><button :disabled="ledger.page <= 1" @click="loadLedger(ledger.page - 1)">上一页</button><span class="mono">{{ ledger.page }} / {{ Math.max(1, Math.ceil(ledger.total / ledger.pageSize)) }}</span><button :disabled="ledger.page >= Math.ceil(ledger.total / ledger.pageSize)" @click="loadLedger(ledger.page + 1)">下一页</button></div></div>
+      </section>
+      <section v-if="activeView === 'logs'" class="panel">
+        <div class="panel-head"><div><h2>事件流</h2><p><span :class="['dot', wsConnected ? 'live' : 'offline']"></span>{{ wsConnected ? '实时通道已连接' : '连接中断，正在重试' }}</p></div><div class="row"><input v-model="logFilter" type="search" placeholder="搜索内容或类型" aria-label="筛选实时日志"><button :disabled="!logs.length" @click="logs = []">清空</button></div></div>
+        <div class="logs" ref="consoleEl" role="region" aria-label="实时日志内容" tabindex="0"><div v-for="(log,i) in filteredLogs" :key="i" class="log"><time>{{ log.time }}</time><span :class="['badge', tone(log.type)]">{{ log.type }}</span><span class="log-message mono">{{ log.message }}</span></div><div v-if="!filteredLogs.length" class="empty"><strong>{{ logs.length ? '没有匹配的日志' : '等待智能体事件' }}</strong>{{ logs.length ? '试试其他关键词。' : '连接后，新事件会持续显示在这里。' }}</div></div>
+        <div class="panel-foot row spread"><span>{{ filteredLogs.length }} 条可见</span><span class="mono">缓冲区 {{ logs.length }} / 500</span></div>
+      </section>
+      <details class="release" ref="release"><summary>WebUI {{ version }} · 版本与回滚</summary><div class="release-content"><h2>WebUI v3.0.0</h2><p>2026-11-10 · 双主题控制台。支持深浅主题记忆、响应式布局、独立任务 / 账本 / 日志视图。前端版本独立于 Agent 与服务版本。</p><div class="row"><a class="button" href="index.v2.0.0.html" target="_blank" rel="noopener">打开 v2.0.0</a><a class="button" href="index.v1.0.0.html" target="_blank" rel="noopener">打开 v1.0.0</a></div><p>恢复 v2.0.0 首页（PowerShell，仓库根目录）：</p><pre>Copy-Item src/sphere_agent/web/index.v2.0.0.html src/sphere_agent/web/index.html</pre><p>版本记录与 Git 回滚方式见 <a href="CHANGELOG.md">WebUI 更新记录</a>。</p></div></details>
+      <footer><span>Spherewright · 戴森球计划智能体</span><span class="mono">WebUI {{ version }} · {{ theme === 'dark' ? 'DARK' : 'LIGHT' }}</span></footer>
+    </main>
   </div>
-
+  <dialog ref="writeDialog" aria-labelledby="write-title" @click="closeWriteBackdrop"><h2 id="write-title">开启受控写入？</h2><p>开启后，智能体可以通过 MCP 在游戏中制造、建造及航行，操作可能消耗机甲物料与核心能量。请确认当前游戏状态适合执行任务。</p><div class="row"><button autofocus @click="$refs.writeDialog.close()">保持只读</button><button class="danger-button" @click="confirmWrite">确认开启</button></div></dialog>
+  <div class="toasts" aria-live="polite" aria-atomic="false"><transition-group name="fade"><div v-for="toast in toasts" :key="toast.id" :class="['toast', toast.type === 'error' ? 'danger' : toast.type === 'success' ? 'success' : 'info']">{{ toast.message }}</div></transition-group></div>
 </div>
-
-<script>
-const { createApp, ref, reactive, onMounted, onUnmounted, nextTick, computed } = Vue;
-
-const app = createApp({
-  data() {
-    return {
-      version: 'v2.0.0',
-      status: null,
-      tasks: [],
-      ledger: { events: [], total: 0, page: 1, pageSize: 25 },
-      ledgerFilter: '',
-      logs: [],
-      logFilter: '',
-      wsConnected: false,
-      writeEnabled: false,
-      emergencyStopped: false,
-      taskGoal: '',
-      selectedEvent: null,
-      showWriteConfirm: false,
-      showVersionModal: false,
-      isRefreshing: false,
-      toasts: [],
-      location: window.location,
-      ws: null,
-      statusTimer: null,
-      ledgerTimer: null,
-      toastId: 0,
-      quickGoalPresets: [
-        '观察当前配方科技树并汇报',
-        '采集铜矿10个并返回',
-        '巡检电力网与机甲能量',
-        '检查仓储与分拣器状态'
-      ],
-    };
-  },
-
-  computed: {
-    filteredLogs() {
-      if (!this.logFilter.trim()) return this.logs;
-      const q = this.logFilter.toLowerCase();
-      return this.logs.filter(l => 
-        l.message.toLowerCase().includes(q) || 
-        l.type.toLowerCase().includes(q)
-      );
-    }
-  },
-
-  methods: {
-    // ---------- API Fetchers ----------
-    async apiFetch(url, opts = {}) {
-      try {
-        const res = await fetch(url, {
-          headers: { 'Content-Type': 'application/json' },
-          ...opts,
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          this.showToast(data.error || `HTTP ${res.status}`, 'error');
-          return null;
-        }
-        return data;
-      } catch (e) {
-        this.showToast(`Network error: ${e.message}`, 'error');
-        return null;
-      }
-    },
-
-    async loadStatus() {
-      const data = await this.apiFetch('/api/status');
-      if (data) {
-        this.status = data;
-        this.writeEnabled = data.write_enabled;
-        this.emergencyStopped = data.emergency_stop;
-        if (data.console_version) {
-          this.version = 'v' + data.console_version;
-        }
-      }
-    },
-
-    async loadTasks() {
-      const data = await this.apiFetch('/api/tasks');
-      if (data) this.tasks = data.tasks || [];
-    },
-
-    async loadLedger(page = 1) {
-      if (page < 1) return;
-      const filter = this.ledgerFilter ? `&status=${encodeURIComponent(this.ledgerFilter)}` : '';
-      const data = await this.apiFetch(`/api/ledger?page=${page}&page_size=${this.ledger.pageSize}${filter}`);
-      if (data) {
-        this.ledger.events = data.events || [];
-        this.ledger.total = data.total || 0;
-        this.ledger.page = data.page || page;
-      }
-    },
-
-    async refreshAll() {
-      this.isRefreshing = true;
-      await Promise.all([this.loadStatus(), this.loadTasks(), this.loadLedger(this.ledger.page)]);
-      setTimeout(() => { this.isRefreshing = false; }, 400);
-      this.showToast('Telemetry refreshed / 遥测已同步', 'info');
-    },
-
-    // ---------- Actions ----------
-    toggleWrite() {
-      if (!this.writeEnabled) {
-        this.showWriteConfirm = true;
-      } else {
-        this.setWrite(false);
-      }
-    },
-
-    async confirmWrite() {
-      this.showWriteConfirm = false;
-      await this.setWrite(true);
-    },
-
-    async setWrite(enabled) {
-      const data = await this.apiFetch('/api/write-toggle', {
-        method: 'POST',
-        body: JSON.stringify({ enabled }),
-      });
-      if (data) {
-        this.writeEnabled = data.write_enabled;
-        this.showToast(
-          enabled ? '⚠ 受控写入模式已解锁 / Write Gate Unlocked' : '🔒 已切换回只读模式 / Safe Read-Only Active',
-          enabled ? 'error' : 'success'
-        );
-        this.addLog('SYSTEM', enabled ? 'Write interlock released by engineer' : 'Write interlock restored (Read-Only)');
-      }
-    },
-
-    async createTask() {
-      if (!this.taskGoal.trim()) return;
-      const data = await this.apiFetch('/api/tasks', {
-        method: 'POST',
-        body: JSON.stringify({ goal: this.taskGoal }),
-      });
-      if (data) {
-        this.showToast('✔ 任务已创建 / Task created', 'success');
-        this.addLog('TASK', `Mission queued: ${this.taskGoal}`);
-        this.taskGoal = '';
-        this.loadTasks();
-      }
-    },
-
-    async pauseTask(taskId) {
-      const data = await this.apiFetch(`/api/tasks/${taskId}/pause`, { method: 'POST' });
-      if (data) {
-        this.showToast('⏸ 任务已挂起 / Task paused', 'info');
-        this.addLog('TASK', `Task #${taskId.substring(0,8)} paused`);
-        this.loadTasks();
-      }
-    },
-
-    async resumeTask(taskId) {
-      const data = await this.apiFetch(`/api/tasks/${taskId}/resume`, { method: 'POST' });
-      if (data) {
-        this.showToast('▶ 任务已恢复 / Task resumed', 'success');
-        this.addLog('TASK', `Task #${taskId.substring(0,8)} resumed`);
-        this.loadTasks();
-      }
-    },
-
-    async emergencyStop() {
-      const data = await this.apiFetch('/api/emergency-stop', { method: 'POST' });
-      if (data) {
-        this.emergencyStopped = true;
-        this.showToast('🛑 紧急停止已激活 / Emergency Stop Initiated', 'error');
-        this.addLog('EMERGENCY', 'Reactor halt signal dispatched. PAUSE state asserted.');
-      }
-    },
-
-    async emergencyReset() {
-      const data = await this.apiFetch('/api/emergency-stop/reset', { method: 'POST' });
-      if (data) {
-        this.emergencyStopped = false;
-        this.showToast('✔ 紧急停止已解除 / Emergency Cleared', 'success');
-        this.addLog('EMERGENCY', 'Emergency stop cleared. Operational standby.');
-      }
-    },
-
-    copyEnvelope(data) {
-      navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-      this.showToast('JSON copied to clipboard', 'info');
-    },
-
-    // ---------- WebSocket ----------
-    connectWS() {
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const url = `${proto}://${location.host}/ws/live`;
-      this.ws = new WebSocket(url);
-      this.ws.onopen = () => {
-        this.wsConnected = true;
-        this.addLog('LIVE', 'Cosmo live telemetry connection established');
-      };
-      this.ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.type === 'event') {
-            const kind = msg.kind || 'LEDGER';
-            let detail = '';
-            if (msg.event && msg.event.data) {
-              detail = this.summarizeEvent(msg.event.data);
-            }
-            this.addLog(kind.toUpperCase(), detail || JSON.stringify(msg.event));
-            this.loadLedger(this.ledger.page);
-          } else if (msg.type === 'emergency_stop') {
-            this.emergencyStopped = true;
-            this.addLog('EMERGENCY', msg.message);
-          } else if (msg.type === 'emergency_reset') {
-            this.emergencyStopped = false;
-            this.addLog('EMERGENCY', msg.message);
-          } else {
-            this.addLog(msg.type?.toUpperCase() || 'INFO', msg.message || JSON.stringify(msg));
-          }
-        } catch {
-          this.addLog('RAW', event.data);
-        }
-      };
-      this.ws.onclose = () => {
-        this.wsConnected = false;
-        setTimeout(() => this.connectWS(), 3000);
-      };
-      this.ws.onerror = () => {
-        this.wsConnected = false;
-      };
-    },
-
-    addLog(type, message) {
-      const now = new Date();
-      const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
-      this.logs.push({ type, message, time });
-      if (this.logs.length > 500) this.logs.splice(0, this.logs.length - 500);
-      nextTick(() => {
-        const el = this.$refs.consoleEl;
-        if (el) el.scrollTop = el.scrollHeight;
-      });
-    },
-
-    // ---------- Visual Helpers ----------
-    showToast(message, type = 'info') {
-      const id = ++this.toastId;
-      this.toasts.push({ id, message, type });
-      setTimeout(() => {
-        this.toasts = this.toasts.filter(t => t.id !== id);
-      }, 4000);
-    },
-
-    taskStateColor(state) {
-      const map = {
-        pending: 'bg-gray-800 text-gray-300 border border-gray-700',
-        running: 'bg-emerald-950/70 text-emerald-300 border border-emerald-600/60',
-        waiting_confirmation: 'bg-amber-950/70 text-amber-300 border border-amber-600/60',
-        paused: 'bg-blue-950/70 text-blue-300 border border-blue-600/60',
-        blocked: 'bg-orange-950/70 text-orange-300 border border-orange-600/60',
-        completed: 'bg-emerald-900/90 text-emerald-100 border border-emerald-500',
-        failed: 'bg-red-950/70 text-red-300 border border-red-600/60',
-      };
-      return map[state] || 'bg-gray-800 text-gray-300 border border-gray-700';
-    },
-
-    eventKindColor(kind) {
-      const map = {
-        observation: 'bg-cyan-950/60 text-cyan-300 border border-cyan-600/60',
-        decision: 'bg-purple-950/60 text-purple-300 border border-purple-600/60',
-        entry: 'bg-emerald-950/60 text-emerald-300 border border-emerald-600/60',
-        prepare_intent: 'bg-amber-950/60 text-amber-300 border border-amber-600/60',
-        prepare: 'bg-amber-900/60 text-amber-200 border border-amber-500/60',
-        action: 'bg-orange-950/60 text-orange-300 border border-orange-600/60',
-        verified: 'bg-emerald-900/80 text-emerald-200 border border-emerald-400',
-        read_retry: 'bg-red-950/60 text-red-300 border border-red-600/60',
-        factory_endpoint: 'bg-cyan-900/60 text-cyan-200 border border-cyan-500',
-        remote_route: 'bg-indigo-950/60 text-indigo-300 border border-indigo-600/60',
-        system_observation: 'bg-teal-950/60 text-teal-300 border border-teal-600/60',
-      };
-      return map[kind] || 'bg-gray-800 text-gray-300 border border-gray-700';
-    },
-
-    logRowBg(type) {
-      if (['EMERGENCY', 'ERROR', 'FAILED'].includes(type)) return 'bg-red-950/20';
-      if (['ACTION', 'VERIFIED'].includes(type)) return 'bg-emerald-950/15';
-      return '';
-    },
-
-    logBadgeStyle(type) {
-      const map = {
-        SYSTEM: 'bg-dsp-card text-dsp-cyan border border-dsp-border',
-        LIVE: 'bg-emerald-950 text-emerald-400 border border-emerald-700',
-        TASK: 'bg-blue-950 text-blue-300 border border-blue-700',
-        EMERGENCY: 'bg-red-900 text-red-100 border border-red-500 animate-pulse',
-        ACTION: 'bg-amber-950 text-amber-300 border border-amber-600',
-        DECISION: 'bg-purple-950 text-purple-300 border border-purple-600',
-        OBSERVATION: 'bg-cyan-950 text-cyan-300 border border-cyan-700',
-        VERIFIED: 'bg-emerald-900 text-emerald-200 border border-emerald-400',
-      };
-      return map[type] || 'bg-gray-800 text-gray-300 border border-gray-700';
-    },
-
-    summarizeEvent(data) {
-      if (!data) return '{}';
-      if (typeof data === 'string') return data;
-      const keys = Object.keys(data);
-      if (keys.length === 0) return '{}';
-      const preview = keys.slice(0, 3).map(k => {
-        const v = data[k];
-        if (v === null || v === undefined) return `${k}: null`;
-        if (typeof v === 'object') return `${k}: {...}`;
-        const s = String(v);
-        return `${k}: ${s.length > 25 ? s.substring(0, 25) + '...' : s}`;
-      }).join(', ');
-      return keys.length > 3 ? `{ ${preview}, ... }` : `{ ${preview} }`;
-    },
-  },
-
-  mounted() {
-    this.loadStatus();
-    this.loadTasks();
-    this.loadLedger();
-    this.connectWS();
-    this.statusTimer = setInterval(() => {
-      this.loadStatus();
-      this.loadTasks();
-    }, 5000);
-    this.ledgerTimer = setInterval(() => this.loadLedger(this.ledger.page), 10000);
-  },
-
-  beforeUnmount() {
-    if (this.statusTimer) clearInterval(this.statusTimer);
-    if (this.ledgerTimer) clearInterval(this.ledgerTimer);
-    if (this.ws) this.ws.close();
-  },
-});
-
-app.mount('#app');
-</script>
-
+<noscript>请启用 JavaScript 以使用 Spherewright 控制台。</noscript>
 </body>
 </html>
