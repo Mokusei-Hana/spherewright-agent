@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spherewright Agent Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            'sw-dark': '#0a0e14',
+            'sw-panel': '#131820',
+            'sw-panel-alt': '#181e28',
+            'sw-border': '#252d3a',
+            'sw-accent': '#00d4aa',
+            'sw-accent2': '#06b6d4',
+            'sw-danger': '#ef4444',
+            'sw-warn': '#f59e0b',
+            'sw-muted': '#64748b',
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Consolas', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { scrollbar-width: thin; scrollbar-color: #252d3a #131820; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #131820; }
+    ::-webkit-scrollbar-thumb { background: #252d3a; border-radius: 3px; }
+    @keyframes pulse-danger { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 50% { box-shadow: 0 0 20px 4px rgba(239, 68, 68, 0.6); } }
+    .pulse-danger { animation: pulse-danger 1.5s infinite; }
+    .toggle-switch { position: relative; width: 52px; height: 28px; border-radius: 14px; cursor: pointer; transition: all 0.3s; }
+    .toggle-switch .toggle-dot { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; transition: all 0.3s; }
+    .toggle-switch.active .toggle-dot { transform: translateX(24px); }
+    .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; font-size: 0.7rem; font-weight: 500; letter-spacing: 0.02em; }
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+  </style>
+</head>
+<body class="bg-sw-dark text-gray-200 font-sans min-h-screen">
+
+<div id="app" class="flex flex-col h-screen">
+
+  <!-- ========== Top Nav Bar ========== -->
+  <header class="flex items-center justify-between px-4 py-2.5 bg-sw-panel border-b border-sw-border flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <span class="text-sw-accent text-2xl animate-pulse">⬡</span>
+      <div>
+        <span class="text-base font-bold tracking-wide text-white">Spherewright</span>
+        <span class="text-xs text-sw-accent ml-1 font-mono uppercase">Web Console</span>
+      </div>
+    </div>
+    <div class="flex items-center gap-4 text-xs">
+      <!-- WS status -->
+      <span class="flex items-center gap-1.5 bg-sw-panel-alt px-2.5 py-1 rounded-full border border-sw-border">
+        <span :class="['w-2 h-2 rounded-full', wsConnected ? 'bg-emerald-400 animate-ping' : 'bg-red-500']"></span>
+        <span :class="wsConnected ? 'text-emerald-400 font-mono' : 'text-red-400 font-mono'">{{ wsConnected ? 'LIVE WS' : 'DISCONNECTED' }}</span>
+      </span>
+      <!-- Write mode badge -->
+      <span v-if="writeEnabled" class="badge bg-red-900/60 text-red-300 border border-red-700">⚠ WRITE ENABLED</span>
+      <span v-else class="badge bg-sw-panel-alt text-sw-muted border border-sw-border">🔒 READ ONLY</span>
+      <!-- Emergency badge -->
+      <span v-if="emergencyStopped" class="badge bg-red-700 text-white pulse-danger">🛑 EMERGENCY STOPPED</span>
+    </div>
+    <div class="flex items-center gap-3 text-xs text-sw-muted">
+      <span>Database: <strong class="text-gray-300 font-mono">{{ status?.database ? 'Online' : 'Loading...' }}</strong></span>
+      <span>Tasks: <strong class="text-sw-accent font-mono">{{ tasks.length }}</strong></span>
+    </div>
+  </header>
+
+  <!-- ========== Main 4-Panel Grid ========== -->
+  <main class="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-px bg-sw-border overflow-hidden">
+
+    <!-- ===== Panel 1: Status Overview (状态监控面板) ===== -->
+    <section class="bg-sw-panel flex flex-col overflow-hidden">
+      <div class="px-4 py-2 border-b border-sw-border flex items-center justify-between">
+        <h2 class="text-xs font-bold text-sw-accent tracking-wider uppercase flex items-center gap-2">
+          <span>📡</span>
+          <span>Status Overview / 状态监控面板</span>
+        </h2>
+        <span class="text-[10px] text-sw-muted font-mono">Refresh: 5s</span>
+      </div>
+      <div class="p-4 overflow-y-auto flex-1 space-y-3 text-xs" v-if="status">
+        <!-- Core Telemetry: Planet, Energy, Icarus Coordinates, Inventory -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <!-- Planet ID -->
+          <div class="bg-sw-panel-alt rounded-lg p-2.5 border border-sw-border">
+            <div class="text-sw-muted text-[11px] mb-1">Planet ID / 星球</div>
+            <div class="font-mono text-base font-bold text-sw-accent2">
+              {{ status.planet?.localPlanetId ?? 'N/A' }}
+            </div>
+            <div class="text-[10px] text-sw-muted truncate" :title="status.planet?.sessionId">
+              {{ status.planet?.sessionId ? 'Session: ' + status.planet.sessionId.substring(0,8) + '...' : 'Waiting world' }}
+            </div>
+          </div>
+
+          <!-- Icarus Position -->
+          <div class="bg-sw-panel-alt rounded-lg p-2.5 border border-sw-border">
+            <div class="text-sw-muted text-[11px] mb-1">Coordinates / 坐标</div>
+            <div class="font-mono text-xs text-gray-200">
+              <span v-if="status.icarus?.position">
+                X:{{ Math.round(status.icarus.position.x || 0) }}
+                Y:{{ Math.round(status.icarus.position.y || 0) }}
+                Z:{{ Math.round(status.icarus.position.z || 0) }}
+              </span>
+              <span v-else class="text-sw-muted">Grounded</span>
+            </div>
+            <div class="text-[10px] text-sw-muted">
+              {{ status.icarus?.isOnPlanet ? 'On Surface' : 'Spatial / Transit' }}
+            </div>
+          </div>
+
+          <!-- Energy Bar -->
+          <div class="bg-sw-panel-alt rounded-lg p-2.5 border border-sw-border">
+            <div class="text-sw-muted text-[11px] mb-1">Core Energy / 能量槽</div>
+            <div class="font-mono text-xs font-semibold text-emerald-400">
+              {{ status.icarus?.coreEnergyRatio ? (status.icarus.coreEnergyRatio * 100).toFixed(1) + '%' : (status.icarus?.coreEnergy ? status.icarus.coreEnergy + ' J' : 'Nominal') }}
+            </div>
+            <div class="w-full bg-sw-dark rounded-full h-1.5 mt-1 overflow-hidden">
+              <div class="bg-emerald-400 h-full rounded-full transition-all duration-500" :style="{ width: (status.icarus?.coreEnergyRatio ? (status.icarus.coreEnergyRatio * 100) : 100) + '%' }"></div>
+            </div>
+          </div>
+
+          <!-- Inventory Count -->
+          <div class="bg-sw-panel-alt rounded-lg p-2.5 border border-sw-border">
+            <div class="text-sw-muted text-[11px] mb-1">Backpack / 背包物资</div>
+            <div class="font-mono text-base font-bold text-sw-warn">
+              {{ status.icarus?.inventoryCount ?? '0' }} <span class="text-xs font-normal text-sw-muted">stacks</span>
+            </div>
+            <div class="text-[10px] text-sw-muted">Local player storage</div>
+          </div>
+        </div>
+
+        <!-- System & Provider Status -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <div class="bg-sw-panel-alt rounded-lg p-2.5 border border-sw-border">
+            <div class="text-sw-muted text-[11px] mb-1">Provider & Model</div>
+            <div class="font-mono text-xs text-sw-accent2 font-semibold">{{ status.provider_model }}</div>
+            <div class="text-[10px] text-sw-muted mt-0.5">Type: {{ status.provider_type }}</div>
+          </div>
+          <div class="bg-sw-panel-alt rounded-lg p-2.5 border border-sw-border">
+            <div class="text-sw-muted text-[11px] mb-1">API Key & Doctor Health</div>
+            <div class="flex items-center gap-1.5 mt-0.5">
+              <span :class="['w-2 h-2 rounded-full', status.provider_key_present ? 'bg-emerald-400' : 'bg-red-500']"></span>
+              <span class="font-mono">{{ status.provider_key_present ? 'Key Configured' : 'No Key (Read-only)' }}</span>
+            </div>
+            <div class="text-[10px] text-sw-muted mt-0.5">MCP: {{ status.mcp_status ? status.mcp_status.writeHealth || 'Ready' : 'Bound' }}</div>
+          </div>
+        </div>
+
+        <!-- MCP Process & Database info -->
+        <div class="bg-sw-panel-alt rounded-lg p-2.5 border border-sw-border">
+          <div class="text-sw-muted text-[11px] mb-0.5">MCP Command</div>
+          <div class="font-mono text-xs text-gray-300 break-all">{{ status.mcp_command }}</div>
+        </div>
+        <div class="bg-sw-panel-alt rounded-lg p-2.5 border border-sw-border">
+          <div class="text-sw-muted text-[11px] mb-0.5">SQLite Ledger Path</div>
+          <div class="font-mono text-xs text-gray-300 break-all">{{ status.database }}</div>
+        </div>
+
+        <!-- Safety indicators -->
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="bg-sw-panel-alt rounded-lg p-2 border border-sw-border">
+            <div class="text-sw-muted text-[10px]">Config Allow Write</div>
+            <span :class="['badge mt-1', status.allow_write ? 'bg-amber-900/60 text-amber-300' : 'bg-gray-800 text-gray-400']">
+              {{ status.allow_write ? 'ALLOWED' : 'DENIED' }}
+            </span>
+          </div>
+          <div class="bg-sw-panel-alt rounded-lg p-2 border border-sw-border">
+            <div class="text-sw-muted text-[10px]">Console Write Toggle</div>
+            <span :class="['badge mt-1', status.write_enabled ? 'bg-red-900/60 text-red-300' : 'bg-gray-800 text-gray-400']">
+              {{ status.write_enabled ? 'UNLOCKED' : 'LOCKED' }}
+            </span>
+          </div>
+          <div class="bg-sw-panel-alt rounded-lg p-2 border border-sw-border">
+            <div class="text-sw-muted text-[10px]">PAUSE File</div>
+            <span :class="['badge mt-1', status.pause_file_exists ? 'bg-red-900/60 text-red-300' : 'bg-emerald-900/40 text-emerald-300']">
+              {{ status.pause_file_exists ? 'PAUSED' : 'CLEAR' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Pending action alert -->
+        <div v-if="status.pending" class="bg-amber-950/40 rounded-lg p-3 border border-amber-700/80">
+          <div class="text-amber-400 font-bold mb-1 flex items-center gap-1.5">
+            <span>⚠</span>
+            <span>Pending Intent in Ledger / 未核销意图</span>
+          </div>
+          <pre class="text-[11px] text-gray-300 overflow-x-auto whitespace-pre-wrap max-h-32">{{ JSON.stringify(status.pending, null, 2) }}</pre>
+        </div>
+      </div>
+      <div v-else class="p-4 text-sw-muted text-sm flex items-center justify-center flex-1 font-mono">
+        Connecting to Spherewright Agent backend...
+      </div>
+    </section>
+
+    <!-- ===== Panel 2: Command & Control (安全控制与任务交互) ===== -->
+    <section class="bg-sw-panel flex flex-col overflow-hidden">
+      <div class="px-4 py-2 border-b border-sw-border">
+        <h2 class="text-xs font-bold text-sw-accent tracking-wider uppercase flex items-center gap-2">
+          <span>🎮</span>
+          <span>Command & Control / 安全控制与任务交互</span>
+        </h2>
+      </div>
+      <div class="p-4 overflow-y-auto flex-1 space-y-4">
+
+        <!-- Safety Switch: Enable Write Toggle -->
+        <div :class="['rounded-xl p-4 border transition-all duration-300', writeEnabled ? 'bg-red-950/30 border-red-700 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-sw-panel-alt border-sw-border']">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-sm font-bold flex items-center gap-2">
+                <span>受控写入开关 / Controlled Write Switch</span>
+                <span v-if="writeEnabled" class="text-xs text-red-400 animate-pulse">● ACTIVE</span>
+              </div>
+              <div class="text-xs text-sw-muted mt-1">
+                {{ writeEnabled ? '⚠ 写入开关已解锁：允许下发受控游戏写操作（建造、采集、制造等）' : '默认只读模式：任何游戏写操作均被物理阻断' }}
+              </div>
+            </div>
+            <div
+              :class="['toggle-switch', writeEnabled ? 'bg-red-600 active' : 'bg-gray-700']"
+              @click="toggleWrite"
+              title="Toggle Write Mode"
+            >
+              <div :class="['toggle-dot', writeEnabled ? 'bg-white' : 'bg-gray-400']"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Risk Confirmation Modal -->
+        <div v-if="showWriteConfirm" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center backdrop-blur-sm" @click.self="showWriteConfirm=false">
+          <div class="bg-sw-panel border border-red-700 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+            <div class="text-red-400 text-lg font-bold mb-3 flex items-center gap-2">
+              <span>⚠</span>
+              <span>高风险操作确认 / Risk Confirmation</span>
+            </div>
+            <p class="text-sm text-gray-200 mb-3">
+              您即将解锁“受控写入开关”。解锁后，Agent 和任务调度器将被赋予下发游戏写动作（A–G 适配器）的权限。
+            </p>
+            <p class="text-xs text-sw-muted mb-5 leading-relaxed">
+              Enabling write mode allows executing real actions in Spherewright. Every action is bounded by native safety gates, but may consume materials or energy.
+            </p>
+            <div class="flex gap-3 justify-end">
+              <button @click="showWriteConfirm=false" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm transition">取消 Cancel</button>
+              <button @click="confirmWrite" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition">确认解锁 Confirm Unlock</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Task Input Box -->
+        <div class="bg-sw-panel-alt rounded-xl p-4 border border-sw-border">
+          <div class="text-sm font-semibold mb-2 flex items-center justify-between">
+            <span>新建 Agent 目标任务 / New Agent Task</span>
+            <span v-if="!writeEnabled" class="text-[11px] text-amber-400">需先解锁写入开关</span>
+          </div>
+          <div class="flex gap-2">
+            <input
+              v-model="taskGoal"
+              :disabled="!writeEnabled"
+              type="text"
+              placeholder="例如：观察并采集铜矿10个，不进行长途移动..."
+              class="flex-1 bg-sw-dark border border-sw-border rounded-lg px-3 py-2 text-sm outline-none focus:border-sw-accent transition disabled:opacity-40 disabled:cursor-not-allowed text-gray-200"
+              @keyup.enter="createTask"
+            />
+            <button
+              @click="createTask"
+              :disabled="!writeEnabled || !taskGoal.trim()"
+              class="px-5 py-2 bg-sw-accent text-sw-dark font-bold rounded-lg text-sm hover:bg-sw-accent/90 transition disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              <span>启动 Start</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Emergency Stop Button -->
+        <div class="bg-sw-panel-alt rounded-xl p-4 border border-sw-border">
+          <div class="text-sm font-semibold mb-2">即时紧急停止 / Instant Emergency Stop</div>
+          <div class="flex gap-3">
+            <button
+              v-if="!emergencyStopped"
+              @click="emergencyStop"
+              class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-sm transition transform hover:scale-[1.01] active:scale-95 shadow-lg shadow-red-900/40 flex items-center justify-center gap-2"
+            >
+              <span class="text-lg">🛑</span>
+              <span>紧急停止 (EMERGENCY STOP)</span>
+            </button>
+            <button
+              v-else
+              @click="emergencyReset"
+              class="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-sm transition pulse-danger flex items-center justify-center gap-2"
+            >
+              <span>🔄</span>
+              <span>解除停止状态 (CLEAR STOP & RESUME)</span>
+            </button>
+          </div>
+          <div v-if="emergencyStopped" class="text-xs text-red-400 mt-2 font-mono">
+            PAUSE signal sent. Running loops and pending actions are halted.
+          </div>
+        </div>
+
+        <!-- Tasks Management List -->
+        <div class="bg-sw-panel-alt rounded-xl p-4 border border-sw-border">
+          <div class="text-sm font-semibold mb-2 flex items-center justify-between">
+            <span>任务状态机 / Tasks State Machine</span>
+            <span class="text-xs text-sw-muted">Count: {{ tasks.length }}</span>
+          </div>
+          <div class="space-y-2 max-h-48 overflow-y-auto" v-if="tasks.length">
+            <div
+              v-for="task in tasks" :key="task.id"
+              class="bg-sw-dark rounded-lg p-3 border border-sw-border text-xs space-y-1.5"
+            >
+              <div class="flex items-center justify-between">
+                <span class="font-mono text-sw-accent font-semibold">{{ task.id?.substring(0, 8) }}...</span>
+                <div class="flex items-center gap-2">
+                  <span :class="['badge', taskStateColor(task.state)]">{{ task.state }}</span>
+                  <!-- Pause/Resume action buttons -->
+                  <button
+                    v-if="['running', 'waiting_confirmation'].includes(task.state) && writeEnabled"
+                    @click="pauseTask(task.id)"
+                    class="px-2 py-0.5 rounded bg-blue-900/50 hover:bg-blue-800 text-blue-200 text-[10px] transition"
+                  >暂停</button>
+                  <button
+                    v-if="['paused', 'blocked', 'failed'].includes(task.state) && writeEnabled"
+                    @click="resumeTask(task.id)"
+                    class="px-2 py-0.5 rounded bg-emerald-900/50 hover:bg-emerald-800 text-emerald-200 text-[10px] transition"
+                  >恢复</button>
+                </div>
+              </div>
+              <div class="text-gray-300 font-medium truncate" :title="task.goal">{{ task.goal }}</div>
+              <div class="flex gap-4 text-sw-muted text-[11px] pt-1 border-t border-sw-border/40">
+                <span>Steps: <strong class="text-gray-300 font-mono">{{ task.steps }}</strong></span>
+                <span>Writes: <strong class="text-gray-300 font-mono">{{ task.writes }}</strong></span>
+                <span>Materials: <strong class="text-gray-300 font-mono">{{ task.materials }}</strong></span>
+                <span v-if="task.detail" class="truncate text-sw-warn">{{ task.detail }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-sw-muted text-xs py-2 text-center">暂无任务记录 / No tasks created yet</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===== Panel 3: Ledger Flow (可视化安全账本) ===== -->
+    <section class="bg-sw-panel flex flex-col overflow-hidden">
+      <div class="px-4 py-2 border-b border-sw-border flex items-center justify-between">
+        <h2 class="text-xs font-bold text-sw-accent tracking-wider uppercase flex items-center gap-2">
+          <span>📋</span>
+          <span>Ledger Flow / 可视化安全账本 (prepare ➔ commit ➔ verify)</span>
+        </h2>
+        <div class="flex items-center gap-2">
+          <!-- Filter dropdown with pending / committed / verified / failed -->
+          <select v-model="ledgerFilter" @change="loadLedger(1)" class="bg-sw-dark border border-sw-border rounded px-2.5 py-1 text-xs outline-none text-gray-200">
+            <option value="">All Flow / 全部记录</option>
+            <option value="pending">pending (待执行/未核销)</option>
+            <option value="committed">committed (已提交动作)</option>
+            <option value="verified">verified (已验证完成)</option>
+            <option value="failed">failed (失败/异常)</option>
+            <option value="observation">observation (只读观察)</option>
+            <option value="decision">decision (模型决策)</option>
+            <option value="entry">entry (开局校验)</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto">
+        <table class="w-full text-xs">
+          <thead class="sticky top-0 bg-sw-panel-alt z-10">
+            <tr class="border-b border-sw-border">
+              <th class="px-3 py-2 text-left text-sw-muted font-medium w-12">ID</th>
+              <th class="px-3 py-2 text-left text-sw-muted font-medium w-28">Stage / 阶段</th>
+              <th class="px-3 py-2 text-left text-sw-muted font-medium">Flow Data / 动作与核销回执</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="event in ledger.events" :key="event.id"
+              class="border-b border-sw-border/50 hover:bg-sw-panel-alt/60 cursor-pointer transition"
+              @click="selectedEvent = selectedEvent === event.id ? null : event.id"
+            >
+              <td class="px-3 py-2 font-mono text-sw-muted">{{ event.id }}</td>
+              <td class="px-3 py-2">
+                <span :class="['badge', eventKindColor(event.kind)]">{{ event.kind }}</span>
+              </td>
+              <td class="px-3 py-2 text-gray-300">
+                <div v-if="selectedEvent !== event.id" class="truncate max-w-md font-mono text-[11px]">
+                  {{ summarizeEvent(event.data) }}
+                </div>
+                <div v-else class="space-y-1">
+                  <div class="text-[10px] text-sw-accent uppercase tracking-wider font-mono">Detailed Event Envelope:</div>
+                  <pre class="text-[11px] text-gray-200 whitespace-pre-wrap overflow-x-auto max-h-60 overflow-y-auto bg-sw-dark rounded p-2.5 border border-sw-border font-mono">{{ JSON.stringify(event.data, null, 2) }}</pre>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!ledger.events.length">
+              <td colspan="3" class="px-3 py-8 text-center text-sw-muted">暂无符合条件的账本流记录 / No matching ledger events</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="px-4 py-2 border-t border-sw-border flex items-center justify-between text-xs text-sw-muted bg-sw-panel flex-shrink-0">
+        <span>Total: <strong class="text-gray-300 font-mono">{{ ledger.total }}</strong> events</span>
+        <div class="flex items-center gap-2">
+          <button @click="loadLedger(ledger.page - 1)" :disabled="ledger.page <= 1" class="px-2.5 py-1 rounded bg-sw-panel-alt hover:bg-sw-border disabled:opacity-30 transition">← Prev</button>
+          <span class="font-mono">Page {{ ledger.page }} / {{ Math.max(1, Math.ceil(ledger.total / ledger.pageSize)) }}</span>
+          <button @click="loadLedger(ledger.page + 1)" :disabled="ledger.page >= Math.ceil(ledger.total / ledger.pageSize)" class="px-2.5 py-1 rounded bg-sw-panel-alt hover:bg-sw-border disabled:opacity-30 transition">Next →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Panel 4: Live Console (实时日志与规划流) ===== -->
+    <section class="bg-sw-panel flex flex-col overflow-hidden">
+      <div class="px-4 py-2 border-b border-sw-border flex items-center justify-between">
+        <h2 class="text-xs font-bold text-sw-accent tracking-wider uppercase flex items-center gap-2">
+          <span>💻</span>
+          <span>Live Console / 实时日志与规划流 (Thoughts & Actions A–G)</span>
+        </h2>
+        <div class="flex items-center gap-2">
+          <span :class="['w-2 h-2 rounded-full', wsConnected ? 'bg-emerald-400' : 'bg-red-500']"></span>
+          <span class="text-xs font-mono text-sw-muted">{{ wsConnected ? 'STREAMING' : 'OFFLINE' }}</span>
+          <button @click="logs = []" class="text-[11px] text-sw-muted hover:text-gray-200 px-2 py-0.5 rounded bg-sw-panel-alt transition border border-sw-border">Clear</button>
+        </div>
+      </div>
+      <div ref="consoleEl" class="flex-1 overflow-y-auto p-3 font-mono text-xs leading-relaxed bg-sw-dark">
+        <div
+          v-for="(log, i) in logs" :key="i"
+          :class="['py-0.5 border-b border-sw-border/20', logColor(log.type)]"
+        >
+          <span class="text-sw-muted">[{{ log.time }}]</span>
+          <span :class="logTypeColor(log.type)" class="font-bold ml-1.5 uppercase">[{{ log.type }}]</span>
+          <span class="ml-2 text-gray-200 break-all">{{ log.message }}</span>
+        </div>
+        <div v-if="!logs.length" class="text-sw-muted py-12 text-center text-xs space-y-1">
+          <div>Waiting for real-time Agent thought streams & actions...</div>
+          <div class="text-[11px] text-sw-muted font-mono">Channel: ws://{{ location.host }}/ws/live</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ========== Toast Notifications ========== -->
+  <div class="fixed bottom-4 right-4 z-50 space-y-2">
+    <transition-group name="fade">
+      <div
+        v-for="toast in toasts" :key="toast.id"
+        :class="['rounded-xl px-4 py-3 text-xs shadow-2xl border max-w-sm font-medium',
+          toast.type === 'error' ? 'bg-red-950/90 border-red-700 text-red-200' :
+          toast.type === 'success' ? 'bg-emerald-950/90 border-emerald-700 text-emerald-200' :
+          'bg-sw-panel/90 border-sw-border text-gray-200']"
+      >
+        {{ toast.message }}
+      </div>
+    </transition-group>
+  </div>
+
+</div>
+
+<script>
+const { createApp, ref, reactive, onMounted, onUnmounted, nextTick } = Vue;
+
+const app = createApp({
+  data() {
+    return {
+      status: null,
+      tasks: [],
+      ledger: { events: [], total: 0, page: 1, pageSize: 25 },
+      ledgerFilter: '',
+      logs: [],
+      wsConnected: false,
+      writeEnabled: false,
+      emergencyStopped: false,
+      taskGoal: '',
+      selectedEvent: null,
+      showWriteConfirm: false,
+      toasts: [],
+      location: window.location,
+      ws: null,
+      statusTimer: null,
+      ledgerTimer: null,
+      toastId: 0,
+    };
+  },
+
+  methods: {
+    // ---------- API ----------
+    async apiFetch(url, opts = {}) {
+      try {
+        const res = await fetch(url, {
+          headers: { 'Content-Type': 'application/json' },
+          ...opts,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          this.showToast(data.error || `Error ${res.status}`, 'error');
+          return null;
+        }
+        return data;
+      } catch (e) {
+        this.showToast(`Network error: ${e.message}`, 'error');
+        return null;
+      }
+    },
+
+    async loadStatus() {
+      const data = await this.apiFetch('/api/status');
+      if (data) {
+        this.status = data;
+        this.writeEnabled = data.write_enabled;
+        this.emergencyStopped = data.emergency_stop;
+      }
+    },
+
+    async loadTasks() {
+      const data = await this.apiFetch('/api/tasks');
+      if (data) this.tasks = data.tasks || [];
+    },
+
+    async loadLedger(page = 1) {
+      if (page < 1) return;
+      const filter = this.ledgerFilter ? `&status=${encodeURIComponent(this.ledgerFilter)}` : '';
+      const data = await this.apiFetch(`/api/ledger?page=${page}&page_size=${this.ledger.pageSize}${filter}`);
+      if (data) {
+        this.ledger.events = data.events || [];
+        this.ledger.total = data.total || 0;
+        this.ledger.page = data.page || page;
+      }
+    },
+
+    // ---------- Actions ----------
+    toggleWrite() {
+      if (!this.writeEnabled) {
+        this.showWriteConfirm = true;
+      } else {
+        this.setWrite(false);
+      }
+    },
+
+    async confirmWrite() {
+      this.showWriteConfirm = false;
+      await this.setWrite(true);
+    },
+
+    async setWrite(enabled) {
+      const data = await this.apiFetch('/api/write-toggle', {
+        method: 'POST',
+        body: JSON.stringify({ enabled }),
+      });
+      if (data) {
+        this.writeEnabled = data.write_enabled;
+        this.showToast(
+          enabled ? '⚠ 写入模式已开启 / Write mode enabled' : '🔒 已切换回只读模式 / Read-only mode active',
+          enabled ? 'error' : 'success'
+        );
+        this.addLog('SYSTEM', enabled ? 'Write safety gate unlocked by user' : 'Write safety gate locked (Read-Only)');
+      }
+    },
+
+    async createTask() {
+      if (!this.taskGoal.trim()) return;
+      const data = await this.apiFetch('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify({ goal: this.taskGoal }),
+      });
+      if (data) {
+        this.showToast('✅ 任务已创建 / Task created', 'success');
+        this.addLog('TASK', `New Task created: ${this.taskGoal}`);
+        this.taskGoal = '';
+        this.loadTasks();
+      }
+    },
+
+    async pauseTask(taskId) {
+      const data = await this.apiFetch(`/api/tasks/${taskId}/pause`, { method: 'POST' });
+      if (data) {
+        this.showToast('⏸ 任务已暂停 / Task paused', 'info');
+        this.addLog('TASK', `Task ${taskId.substring(0,8)} paused`);
+        this.loadTasks();
+      }
+    },
+
+    async resumeTask(taskId) {
+      const data = await this.apiFetch(`/api/tasks/${taskId}/resume`, { method: 'POST' });
+      if (data) {
+        this.showToast('▶ 任务已恢复 / Task resumed', 'success');
+        this.addLog('TASK', `Task ${taskId.substring(0,8)} resumed`);
+        this.loadTasks();
+      }
+    },
+
+    async emergencyStop() {
+      const data = await this.apiFetch('/api/emergency-stop', { method: 'POST' });
+      if (data) {
+        this.emergencyStopped = true;
+        this.showToast('🛑 紧急停止已激活 / Emergency stop activated', 'error');
+        this.addLog('EMERGENCY', 'Emergency stop initiated by user. PAUSE asserted.');
+      }
+    },
+
+    async emergencyReset() {
+      const data = await this.apiFetch('/api/emergency-stop/reset', { method: 'POST' });
+      if (data) {
+        this.emergencyStopped = false;
+        this.showToast('✅ 紧急停止已解除 / Emergency stop cleared', 'success');
+        this.addLog('EMERGENCY', 'Emergency stop cleared by user. PAUSE released.');
+      }
+    },
+
+    // ---------- WebSocket ----------
+    connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const url = `${proto}://${location.host}/ws/live`;
+      this.ws = new WebSocket(url);
+      this.ws.onopen = () => {
+        this.wsConnected = true;
+        this.addLog('LIVE', 'Live stream socket established');
+      };
+      this.ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'event') {
+            const kind = msg.kind || 'LEDGER';
+            let detail = '';
+            if (msg.event && msg.event.data) {
+              detail = this.summarizeEvent(msg.event.data);
+            }
+            this.addLog(kind.toUpperCase(), detail || JSON.stringify(msg.event));
+            this.loadLedger(this.ledger.page);
+          } else if (msg.type === 'emergency_stop') {
+            this.emergencyStopped = true;
+            this.addLog('EMERGENCY', msg.message);
+          } else if (msg.type === 'emergency_reset') {
+            this.emergencyStopped = false;
+            this.addLog('EMERGENCY', msg.message);
+          } else {
+            this.addLog(msg.type?.toUpperCase() || 'INFO', msg.message || JSON.stringify(msg));
+          }
+        } catch {
+          this.addLog('RAW', event.data);
+        }
+      };
+      this.ws.onclose = () => {
+        this.wsConnected = false;
+        setTimeout(() => this.connectWS(), 3000);
+      };
+      this.ws.onerror = () => {
+        this.wsConnected = false;
+      };
+    },
+
+    addLog(type, message) {
+      const now = new Date();
+      const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+      this.logs.push({ type, message, time });
+      if (this.logs.length > 500) this.logs.splice(0, this.logs.length - 500);
+      nextTick(() => {
+        const el = this.$refs.consoleEl;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+
+    // ---------- Helpers ----------
+    showToast(message, type = 'info') {
+      const id = ++this.toastId;
+      this.toasts.push({ id, message, type });
+      setTimeout(() => {
+        this.toasts = this.toasts.filter(t => t.id !== id);
+      }, 4000);
+    },
+
+    taskStateColor(state) {
+      const map = {
+        pending: 'bg-gray-700 text-gray-300',
+        running: 'bg-emerald-900/60 text-emerald-300',
+        waiting_confirmation: 'bg-amber-900/60 text-amber-300',
+        paused: 'bg-blue-900/60 text-blue-300',
+        blocked: 'bg-orange-900/60 text-orange-300',
+        completed: 'bg-emerald-800 text-emerald-200',
+        failed: 'bg-red-900/60 text-red-300',
+      };
+      return map[state] || 'bg-gray-700 text-gray-300';
+    },
+
+    eventKindColor(kind) {
+      const map = {
+        observation: 'bg-sky-900/60 text-sky-300 border border-sky-800',
+        decision: 'bg-purple-900/60 text-purple-300 border border-purple-800',
+        entry: 'bg-emerald-900/60 text-emerald-300 border border-emerald-800',
+        prepare_intent: 'bg-amber-900/60 text-amber-300 border border-amber-800',
+        prepare: 'bg-amber-800/60 text-amber-200 border border-amber-700',
+        action: 'bg-orange-900/60 text-orange-300 border border-orange-800',
+        verified: 'bg-emerald-800/70 text-emerald-200 border border-emerald-600',
+        read_retry: 'bg-red-900/60 text-red-300 border border-red-800',
+        factory_endpoint: 'bg-cyan-900/60 text-cyan-300 border border-cyan-800',
+        remote_route: 'bg-indigo-900/60 text-indigo-300 border border-indigo-800',
+        system_observation: 'bg-teal-900/60 text-teal-300 border border-teal-800',
+      };
+      return map[kind] || 'bg-gray-800 text-gray-300 border border-gray-700';
+    },
+
+    logColor(type) {
+      if (['EMERGENCY', 'ERROR', 'FAILED'].includes(type)) return 'bg-red-950/20 text-red-300';
+      if (['ACTION', 'VERIFIED'].includes(type)) return 'bg-emerald-950/20 text-emerald-300';
+      return '';
+    },
+
+    logTypeColor(type) {
+      const map = {
+        SYSTEM: 'text-sw-accent',
+        LIVE: 'text-emerald-400',
+        TASK: 'text-sw-accent2',
+        EMERGENCY: 'text-red-400',
+        ACTION: 'text-amber-400',
+        DECISION: 'text-purple-400',
+        OBSERVATION: 'text-sky-400',
+        VERIFIED: 'text-emerald-300',
+      };
+      return map[type] || 'text-sw-muted';
+    },
+
+    summarizeEvent(data) {
+      if (!data) return '{}';
+      if (typeof data === 'string') return data;
+      const keys = Object.keys(data);
+      if (keys.length === 0) return '{}';
+      const preview = keys.slice(0, 3).map(k => {
+        const v = data[k];
+        if (v === null || v === undefined) return `${k}: null`;
+        if (typeof v === 'object') return `${k}: {...}`;
+        const s = String(v);
+        return `${k}: ${s.length > 25 ? s.substring(0, 25) + '...' : s}`;
+      }).join(', ');
+      return keys.length > 3 ? `{ ${preview}, ... }` : `{ ${preview} }`;
+    },
+  },
+
+  mounted() {
+    this.loadStatus();
+    this.loadTasks();
+    this.loadLedger();
+    this.connectWS();
+    this.statusTimer = setInterval(() => {
+      this.loadStatus();
+      this.loadTasks();
+    }, 5000);
+    this.ledgerTimer = setInterval(() => this.loadLedger(this.ledger.page), 10000);
+  },
+
+  beforeUnmount() {
+    if (this.statusTimer) clearInterval(this.statusTimer);
+    if (this.ledgerTimer) clearInterval(this.ledgerTimer);
+    if (this.ws) this.ws.close();
+  },
+});
+
+app.mount('#app');
+</script>
+
+</body>
+</html>

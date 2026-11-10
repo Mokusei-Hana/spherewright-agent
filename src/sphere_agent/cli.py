@@ -243,7 +243,7 @@ def main():
     parser = argparse.ArgumentParser(description="Bounded Spherewright Python agent")
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--enable-write", "--allow-write", dest="enable_write", action="store_true")
-    parser.add_argument("command", choices=["check", "observe", "run", "reconcile", "ledger", "new", "create", "status", "resume", "doctor", "diagnose", "action", "factory", "inspect", "quota", "route", "system"])
+    parser.add_argument("command", choices=["check", "observe", "run", "reconcile", "ledger", "new", "create", "status", "resume", "doctor", "diagnose", "action", "factory", "inspect", "quota", "route", "system", "serve"])
     parser.add_argument("--action")
     parser.add_argument("--arguments")
     parser.add_argument("--object-id", type=int)
@@ -253,7 +253,13 @@ def main():
     parser.add_argument("--journey-id")
     parser.add_argument("--task-id")
     parser.add_argument("--goal", default="观察当前状态并汇报可以手工制造的下一步，不执行写入。")
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
+    if args.command == "serve":
+        from .server.run import serve
+        serve(config_path=args.config, host=args.host, port=args.port)
+        return
     try:
         asyncio.run(execute(args, load_config(args.config)))
     except (Exception, KeyboardInterrupt) as exc:
