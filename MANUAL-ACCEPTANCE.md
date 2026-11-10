@@ -254,6 +254,104 @@ $payload = @{ destination_planet_id=$homePlanetId; destination_star_id=$homeStar
 5. 回程只用原 journeyId、原 home 身份与原 deadline/剩余返航窗口。回家着陆记录为 home_awaiting_save，不能声称原生保存或整个旅程持久关闭。之后的原生保存由用户按 Spherewright 规程处理；本客户端不自动补做。
 6. 断连、没有 actionId、原生失败、outcome_unknown 或星球/会话不一致时保留 pending，所有新写入冻结；只对原动作只读 resume/reconcile，禁止重放飞行、换 checkpoint 或回滚更新的主存档。
 
+## Web 控制台手动验收 (方案 B)
+
+本节记录 Web 控制台（FastAPI 服务 + 现代化 SPA 仪表盘）的用户手动验证流程。所有验证均由用户线下手动完成。
+
+### 1. 启动与访问
+
+确保已安装 `fastapi` 与 `uvicorn`（已声明在 `pyproject.toml` 依赖中）：
+
+```powershell
+.\.venv\Scripts\python -m pip install -e .
+```
+
+启动 Web 控制台服务（任选一种命令）：
+
+```powershell
+# 推荐命令 1：通过 spherewright 别名模块启动
+.\.venv\Scripts\python -m spherewright.cli serve --port 8000
+
+# 推荐命令 2：通过 sphere_agent 原生模块启动
+.\.venv\Scripts\python -m sphere_agent.cli serve --port 8000
+
+# 推荐命令 3：通过可执行脚本入口启动
+.\.venv\Scripts\sphere-agent serve --host 127.0.0.1 --port 8000
+```
+
+打开现代浏览器访问：
+- 控制台地址：`http://localhost:8000` (或 `http://127.0.0.1:8000`)
+- OpenAPI 文档：`http://localhost:8000/docs`
+
+---
+
+### 2. 界面各模块手动验证说明
+
+#### 模块一：状态监控面板 (Status Overview)
+1. **核心遥测数据**：进入页面后，面板自动读取 `/api/status` 并每 5 秒自动刷新。验证：
+   - **星球 ID (Planet ID)**：显示当前受管世界或观察记录中的 `localPlanetId` 与会话标识。
+   - **坐标 (Coordinates)**：显示伊卡洛斯在星球地表的当前 X、Y、Z 轴位置及着陆状态。
+   - **能量槽 (Core Energy)**：带动态进度条和能量数值（或能量比例百分比）。
+   - **背包物资 (Backpack)**：统计当前玩家背包占用格数与物资摘要。
+2. **Provider 与 MCP 诊断**：
+   - 验证 Provider 模型（如 `deepseek-chat`）与 API 密钥配置状态（绿灯/红灯提示）。
+   - 验证 Doctor 诊断输出的 Python 版本、操作系统类型、SQLite 数据库路径与 MCP 命令。
+   - 若账本存在未核销意图（`pending`），面板顶部高亮醒目警示框，展示当前锁定的精确动作上下文。
+
+#### 模块二：安全控制与任务交互 (Command & Control)
+1. **受控写入安全开关 (Enable Write)**：
+   - 页面初始加载默认严格处于**只读模式 (Read-Only)**，右上角及开关区显示安全锁定标识。
+   - 点击开关触发“高风险操作确认”模态弹窗；用户必须显式点击“确认解锁”后，后端才会切换 `write_enabled=True`。
+   - 解锁后，面板呈现红色警戒光晕与醒目警示，防止误触。再次点击可随时切换回只读模式。
+2. **任务输入与调度**：
+   - 只读模式下任务输入与提交按钮处于禁用/置灰状态，杜绝越权写入。
+   - 写入模式解锁后，输入目标描述（例如 `观察当前解锁配方并汇报`）并点击“启动”，调用 `POST /api/tasks` 创建带状态机追踪的有界任务。
+3. **即时紧急停止 (Instant Emergency Stop)**：
+   - 随时点击大红“紧急停止 (EMERGENCY STOP)”按钮，后端立即下发 PAUSE 信号并在配置文件同级目录创建 `PAUSE` 文件。
+   - 停止后按钮转为醒目呼吸灯状态，所有新决策和写提交瞬间被物理阻断；点击“解除停止 (CLEAR STOP)”恢复正常流转。
+4. **任务状态机管理 (Tasks State Machine)**：
+   - 列表展示历史与当前任务的 `pending`、`running`、`waiting_confirmation`、`paused`、`blocked`、`completed`、`failed` 状态。
+   - 支持在写入使能状态下对执行中任务手动执行“暂停 (Pause)”与“恢复 (Resume)”。
+
+#### 模块三：可视化安全账本 (Ledger Flow)
+1. **流程时序跟踪**：
+   - 表格形式展现 `prepare -> commit -> verify` 动作生命周期。
+   - 点击任意行即可展开查看完整的事件数据（包含 `actionId`、`idempotencyKey`、原生物料扣除预算 `itemBudget` 与回执 `terminal evidence`）。
+2. **状态与类别过滤**：
+   - 下拉菜单支持按 `pending`（未核销意图）、`committed`（已提交）、`verified`（已完成核销）、`failed`（失败异常）或特定事件类别（如 `observation`、`decision`、`entry`）快速筛选。
+   - 支持分页翻页导航（每页 25 条）。
+
+#### 模块四：实时日志与规划流 (Live Console)
+1. **WebSocket 实时推流**：
+   - 页面启动时自动通过 `/ws/live` 建立长连接，状态指示灯显示绿色 `LIVE WS`。
+   - 控制台以终端深色风格按时间戳实时滚动推流 Agent 思考流 (`[DECISION]`)、动作调用 (`[ACTION]`)、账本核销 (`[VERIFIED]`) 及急停信号 (`[EMERGENCY]`)。
+2. **自动滚动与清理**：
+   - 保持最近 500 条实时日志，支持一键清屏与断线重连（3 秒自动重连补偿机制）。
+
+---
+
+### 3. 前端版本管理与回滚指南 (Version & Rollback)
+
+为保障工程演进与生产安全，前端已规范化版本控制：
+
+- **当前版本 (v2.0.0)**：戴森球计划太空科技风控制台 (`index.html`)，集成主脑链路、机甲三维坐标、核心电量进度槽、受控写入互锁开关、四矩阵账本流。
+- **基线版本 (v1.0.0)**：初始标准版控制台，完整保存在 `src/sphere_agent/web/index.v1.0.0.html`。同时可在浏览器直接访问 `http://localhost:8000/index.v1.0.0.html` 独立比对。
+
+**一键回滚方式**：
+
+方式 1（文件覆盖）：
+```powershell
+Copy-Item "src/sphere_agent/web/index.v1.0.0.html" "src/sphere_agent/web/index.html" -Force
+```
+
+方式 2（Git 检出）：
+```powershell
+git checkout 1ff41cf -- src/sphere_agent/web/index.html
+```
+
+---
+
 ### 仓库交付范围
 
 只提交必要源码、示例配置、README 与本手册；任务书、个人授权文件、密钥配置、账本、缓存及本地历史验证记录不上传。`.gitignore` 排除这些本地材料。上游契约来源保留在已有 UPSTREAM.md。
+

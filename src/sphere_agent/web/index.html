@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="webui-version" content="3.0.0">
+  <title>Spherewright · 智能体控制台</title>
+  <script>
+    (() => {
+      let theme;
+      try { theme = localStorage.getItem('spherewright-theme'); } catch {}
+      document.documentElement.dataset.theme = ['light', 'dark'].includes(theme)
+        ? theme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    })();
+  </script>
+  <link rel="stylesheet" href="console.css?v=3.0.0">
+  <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script defer src="app.js?v=3.0.0"></script>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
+  <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 10h6M9 14h6M9 18h3"/></symbol>
+  <symbol id="i-ledger" viewBox="0 0 24 24"><path d="M6 3h13v18H6a3 3 0 0 1 0-6h13M6 3a3 3 0 0 0-3 3v12M8 7h7M8 10h5"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14A8.7 8.7 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 10a8 8 0 0 0-14-4L3 9m0-6v6h6M4 14a8 8 0 0 0 14 4l3-3m0 6v-6h-6"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+</svg>
+<div id="app" class="shell" v-cloak>
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true"><circle cx="18" cy="18" r="12" stroke="currentColor" stroke-width="1.5"/><ellipse cx="18" cy="18" rx="6" ry="12" stroke="currentColor" stroke-width="1.5" transform="rotate(35 18 18)"/><path d="M5 22c7-6 18-8 27-5" stroke="currentColor" stroke-width="1.5"/><circle cx="29" cy="12" r="3" fill="currentColor"/></svg>
+      <div><strong>Spherewright</strong><small>戴森球计划 · AI 控制台</small></div>
+    </div>
+    <nav aria-label="控制台导航">
+      <button v-for="view in views" :key="view.id" :class="{active: activeView === view.id}" :aria-current="activeView === view.id ? 'page' : undefined" @click="activeView = view.id">
+        <svg class="icon" aria-hidden="true"><use :href="'#i-' + view.icon"/></svg>{{ view.name }}
+        <span v-if="view.id === 'tasks'" class="count mono">{{ tasks.length }}</span>
+      </button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="connection"><span :class="['dot', wsConnected ? 'live' : 'offline']"></span>{{ wsConnected ? '实时通道已连接' : '实时通道重连中' }}<p>状态每 5 秒同步 · 账本每 10 秒更新</p></div>
+      <button class="version-button" @click="openRelease">WebUI <span class="mono">{{ version }}</span></button>
+    </div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <div class="breadcrumb"><span>控制台</span><span>/</span><b>{{ views.find(v => v.id === activeView)?.name }}</b></div>
+      <div class="actions">
+        <span :class="['badge', writeEnabled ? 'warning' : 'neutral']">{{ writeEnabled ? '受控写入已开启' : '只读观察模式' }}</span>
+        <span v-if="emergencyStopped" class="badge danger">急停中</span>
+        <button class="icon-button" @click="toggleTheme" :title="theme === 'dark' ? '切换为浅色模式' : '切换为深色模式'" :aria-label="theme === 'dark' ? '切换为浅色模式' : '切换为深色模式'">
+          <svg class="icon" aria-hidden="true"><use :href="theme === 'dark' ? '#i-sun' : '#i-moon'"/></svg>
+        </button>
+        <button @click="refreshAll" :disabled="isRefreshing"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>{{ isRefreshing ? '同步中…' : '刷新' }}</button>
+      </div>
+    </header>
+    <main>
+      <div class="page-heading">
+        <div><h1>{{ {overview: '运行总览', tasks: '任务调度', ledger: '安全账本', logs: '实时日志'}[activeView] }}</h1><p>{{ {overview: '观察机甲与世界状态，让每一步行动都有据可循。', tasks: '下达目标，跟踪执行进度与资源消耗。', ledger: '从意图准备到执行核销，追溯每一次决策与动作。', logs: '持续接收智能体事件，查看最近 500 条运行记录。'}[activeView] }}</p></div>
+        <time>{{ lastSync ? '最近同步 ' + lastSync : '等待首次同步' }}</time>
+      </div>
+      <div v-if="statusError" class="notice danger" role="alert"><span>状态同步失败，当前显示最近一次数据。请检查服务连接后刷新。</span><button @click="refreshAll" :disabled="isRefreshing">重新同步</button></div>
+      <div v-if="emergencyStopped" class="notice danger" role="alert"><span><strong>紧急停止已激活</strong> · 智能体决策与写入已暂停。</span><button @click="emergencyReset">解除急停</button></div>
+      <template v-if="activeView === 'overview'">
+        <section class="metrics" aria-label="机甲遥测摘要">
+          <div class="metric"><p class="metric-label">当前天体</p><div class="metric-value">{{ status?.planet?.localPlanetId != null ? '#' + status.planet.localPlanetId : '—' }}</div><p class="metric-note">{{ !status?.planet ? '等待世界观测' : status.planet.peacefulMode == null ? '模式未知' : status.planet.peacefulMode ? '和平模式' : '标准模式' }}</p></div>
+          <div class="metric"><p class="metric-label">机甲核心能量</p><div class="metric-value mono">{{ energyLabel }}</div><div v-if="energyRatio !== null" class="progress" role="progressbar" aria-label="机甲核心能量" :aria-valuenow="Math.round(energyRatio * 100)" aria-valuemin="0" aria-valuemax="100"><span :style="{width: energyRatio * 100 + '%'}"></span></div><p v-else class="metric-note">等待能量观测</p></div>
+          <div class="metric"><p class="metric-label">行囊物资</p><div class="metric-value mono">{{ status?.icarus?.inventoryCount ?? '—' }} <span class="small muted">种</span></div><p class="metric-note">机甲库存条目</p></div>
+          <div class="metric"><p class="metric-label">已记录任务</p><div class="metric-value mono">{{ status ? tasks.length : '—' }}</div><p class="metric-note">{{ tasks.filter(t => t.state === 'running').length }} 个执行中 · {{ tasks.filter(t => t.state === 'paused').length }} 个已暂停</p></div>
+        </section>
+        <div class="dashboard">
+          <div class="stack">
+            <section class="panel"><div class="panel-head"><div><h2>智能体与运行环境</h2><p>当前模型、原生通道及机甲位置</p></div><span :class="['badge', status ? 'success' : 'neutral']">{{ status ? '服务已连接' : '等待服务' }}</span></div>
+              <div class="panel-body"><dl class="facts">
+                <div><dt>调度模型</dt><dd>{{ status?.provider_model || '—' }} <span class="muted">{{ status?.provider_type || '' }}</span></dd></div>
+                <div><dt>API 认证</dt><dd :class="status?.provider_key_present ? 'success badge' : 'neutral badge'">{{ status ? (status.provider_key_present ? '密钥已配置' : '未配置密钥') : '待同步' }}</dd></div>
+                <div><dt>MCP 通道</dt><dd class="mono">{{ status?.mcp_command || '—' }}</dd></div>
+                <div><dt>写入健康状态</dt><dd>{{ status?.mcp_status?.writeHealth ?? status?.planet?.writeHealth ?? '待观测' }}</dd></div>
+                <div><dt>运行环境</dt><dd class="mono">{{ status ? 'Python ' + status.python + ' · ' + status.platform : '—' }}</dd></div>
+                <div><dt>机甲坐标</dt><dd class="mono">{{ positionLabel }}</dd></div>
+                <div><dt>机甲位置状态</dt><dd>{{ status?.icarus?.isOnPlanet == null ? '待观测' : status.icarus.isOnPlanet ? '行星表面' : '太空中' }}</dd></div>
+                <div><dt>当前会话</dt><dd class="mono">{{ status?.planet?.sessionId || '待观测' }}</dd></div>
+              </dl></div>
+            </section>
+            <section class="panel"><div class="panel-head"><h2>最近任务</h2><button class="text-button" @click="activeView = 'tasks'">查看全部任务</button></div>
+              <div v-for="task in tasks.slice(0, 3)" :key="task.id" class="task"><div class="row spread"><span class="mono small muted">#{{ task.id?.slice(0,8) }}</span><span :class="['badge', tone(task.state)]">{{ task.state }}</span></div><p class="task-goal">{{ task.goal }}</p></div>
+              <div v-if="!tasks.length" class="empty"><strong>还没有任务</strong>在任务调度中输入目标，开始一次新的行动。</div>
+            </section>
+          </div>
+          <div class="stack">
+            <section class="panel"><div class="panel-head"><h2>安全控制</h2><span :class="['badge', writeEnabled ? 'warning' : 'success']">{{ writeEnabled ? '可写入' : '只读' }}</span></div><div class="panel-body">
+              <div class="row spread"><h3>受控写入</h3><button :class="['switch', {on: writeEnabled}]" role="switch" :aria-checked="writeEnabled" aria-label="受控写入开关" :disabled="!status" @click="openWriteDialog"><span></span></button></div>
+              <p class="safety-copy">开启后，智能体可执行制造、建造与航行等游戏动作。默认保持只读，开启前需确认。</p>
+              <div class="interlocks"><div class="interlock"><span class="muted">配置允许写入</span><span :class="['badge', status?.allow_write ? 'warning' : 'neutral']">{{ status ? (status.allow_write ? '允许' : '禁止') : '待同步' }}</span></div><div class="interlock"><span class="muted">运行时写入闸门</span><span :class="['badge', writeEnabled ? 'warning' : 'neutral']">{{ status ? (writeEnabled ? '已解锁' : '已锁定') : '待同步' }}</span></div><div class="interlock"><span class="muted">暂停文件</span><span :class="['badge', status?.pause_file_exists ? 'danger' : 'neutral']">{{ status ? (status.pause_file_exists ? '存在' : '未设置') : '待同步' }}</span></div></div>
+              <div class="emergency" style="margin-top:24px"><button class="danger-button" :disabled="!status" @click="emergencyStopped ? emergencyReset() : emergencyStop()"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>{{ emergencyStopped ? '解除紧急停止' : '紧急停止' }}</button><p class="small muted" style="margin-top:10px">立即暂停智能体决策与账本提交。</p></div>
+            </div></section>
+            <section class="panel"><div class="panel-head"><h2>待核销意图</h2><span :class="['badge', status?.pending ? 'warning' : 'neutral']">{{ status?.pending ? '待处理' : status ? '无待核销' : '待同步' }}</span></div><div v-if="status?.pending" class="panel-body"><p class="small muted">以下写入意图尚未完成核销，请在继续操作前查看。</p><pre>{{ JSON.stringify(status.pending, null, 2) }}</pre></div><div v-else class="empty">{{ status ? '暂无待核销意图' : '等待账本状态同步' }}</div></section>
+          </div>
+        </div>
+      </template>
+      <div v-if="activeView === 'tasks'" class="stack">
+        <section class="panel"><div class="panel-head"><h2>新建任务</h2><button v-if="!writeEnabled" class="text-button" :disabled="!status" @click="openWriteDialog">开启受控写入</button><span v-else class="badge warning">受控写入已开启</span></div><form class="panel-body composer" @submit.prevent="createTask"><label for="task-goal">这次希望智能体完成什么？</label><textarea id="task-goal" v-model="taskGoal" :disabled="!writeEnabled || busy" placeholder="例如：巡检电力网与机甲能量"></textarea><div class="row"><button v-for="preset in quickGoalPresets" :key="preset" type="button" class="preset" :disabled="!writeEnabled || busy" @click="taskGoal = preset">{{ preset }}</button></div><div class="row spread composer-footer"><span class="small muted">{{ writeEnabled ? '任务将交给现有智能体流程执行。' : '当前为只读模式，请先开启受控写入。' }}</span><button class="primary" type="submit" :disabled="!writeEnabled || !taskGoal.trim() || busy">{{ busy ? '提交中…' : '下达任务' }}<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></button></div></form></section>
+        <section class="panel"><div class="panel-head"><h2>任务记录</h2><span class="small muted">共 {{ tasks.length }} 个任务</span></div><div v-for="task in tasks" :key="task.id" class="task"><div class="row spread"><span class="mono small muted">#{{ task.id?.slice(0,8) }}</span><div class="row"><span :class="['badge', tone(task.state)]">{{ task.state }}</span><button v-if="['running','waiting_confirmation'].includes(task.state) && writeEnabled" @click="pauseTask(task.id)">暂停</button><button v-if="['paused','blocked','failed'].includes(task.state) && writeEnabled" @click="resumeTask(task.id)">恢复</button></div></div><p class="task-goal">{{ task.goal }}</p><div class="stats mono"><span>步骤 {{ task.steps ?? '—' }}</span><span>写入 {{ task.writes ?? '—' }}</span><span>物料 {{ task.materials ?? '—' }}</span></div><p v-if="task.detail" class="detail">{{ task.detail }}</p></div><div v-if="!tasks.length" class="empty"><strong>准备好第一个目标了吗？</strong>在上方输入任务，或选择一个快捷目标。</div></section>
+      </div>
+      <section v-if="activeView === 'ledger'" class="panel">
+        <div class="panel-head"><div><h2>事件记录</h2><p>PREPARE → COMMIT → VERIFY</p></div><select v-model="ledgerFilter" @change="loadLedger(1)" aria-label="按账本状态筛选"><option value="">全部事件</option><option value="pending">待执行 / 未核销</option><option value="committed">已提交动作</option><option value="verified">已核销</option><option value="failed">失败 / 异常</option><option value="observation">只读观察</option><option value="decision">智能体决策</option></select></div>
+        <div class="table-scroll"><table><thead><tr><th>事件 ID</th><th>阶段 / 类型</th><th>证据与事件数据</th></tr></thead><tbody><tr v-for="event in ledger.events" :key="event.id"><td class="mono muted">#{{ event.id }}</td><td><span :class="['badge', tone(event.kind)]">{{ event.kind }}</span></td><td><div class="event-summary mono">{{ summarizeEvent(event.data) }}</div><button class="text-button" :aria-expanded="selectedEvent === event.id" @click="selectedEvent = selectedEvent === event.id ? null : event.id">{{ selectedEvent === event.id ? '收起详情' : '展开 JSON' }}</button><div v-if="selectedEvent === event.id" class="event-detail"><button @click="copyEnvelope(event.data)">复制 JSON</button><pre>{{ JSON.stringify(event.data, null, 2) }}</pre></div></td></tr><tr v-if="!ledger.events.length"><td colspan="3" class="empty">当前筛选下没有事件，请切换筛选或等待新事件。</td></tr></tbody></table></div>
+        <div class="panel-foot row spread"><span>共 <b class="mono">{{ ledger.total }}</b> 条事件</span><div class="row"><button :disabled="ledger.page <= 1" @click="loadLedger(ledger.page - 1)">上一页</button><span class="mono">{{ ledger.page }} / {{ Math.max(1, Math.ceil(ledger.total / ledger.pageSize)) }}</span><button :disabled="ledger.page >= Math.ceil(ledger.total / ledger.pageSize)" @click="loadLedger(ledger.page + 1)">下一页</button></div></div>
+      </section>
+      <section v-if="activeView === 'logs'" class="panel">
+        <div class="panel-head"><div><h2>事件流</h2><p><span :class="['dot', wsConnected ? 'live' : 'offline']"></span>{{ wsConnected ? '实时通道已连接' : '连接中断，正在重试' }}</p></div><div class="row"><input v-model="logFilter" type="search" placeholder="搜索内容或类型" aria-label="筛选实时日志"><button :disabled="!logs.length" @click="logs = []">清空</button></div></div>
+        <div class="logs" ref="consoleEl" role="region" aria-label="实时日志内容" tabindex="0"><div v-for="(log,i) in filteredLogs" :key="i" class="log"><time>{{ log.time }}</time><span :class="['badge', tone(log.type)]">{{ log.type }}</span><span class="log-message mono">{{ log.message }}</span></div><div v-if="!filteredLogs.length" class="empty"><strong>{{ logs.length ? '没有匹配的日志' : '等待智能体事件' }}</strong>{{ logs.length ? '试试其他关键词。' : '连接后，新事件会持续显示在这里。' }}</div></div>
+        <div class="panel-foot row spread"><span>{{ filteredLogs.length }} 条可见</span><span class="mono">缓冲区 {{ logs.length }} / 500</span></div>
+      </section>
+      <details class="release" ref="release"><summary>WebUI {{ version }} · 版本与回滚</summary><div class="release-content"><h2>WebUI v3.0.0</h2><p>2026-11-10 · 双主题控制台。支持深浅主题记忆、响应式布局、独立任务 / 账本 / 日志视图。前端版本独立于 Agent 与服务版本。</p><div class="row"><a class="button" href="index.v2.0.0.html" target="_blank" rel="noopener">打开 v2.0.0</a><a class="button" href="index.v1.0.0.html" target="_blank" rel="noopener">打开 v1.0.0</a></div><p>恢复 v2.0.0 首页（PowerShell，仓库根目录）：</p><pre>Copy-Item src/sphere_agent/web/index.v2.0.0.html src/sphere_agent/web/index.html</pre><p>版本记录与 Git 回滚方式见 <a href="CHANGELOG.md">WebUI 更新记录</a>。</p></div></details>
+      <footer><span>Spherewright · 戴森球计划智能体</span><span class="mono">WebUI {{ version }} · {{ theme === 'dark' ? 'DARK' : 'LIGHT' }}</span></footer>
+    </main>
+  </div>
+  <dialog ref="writeDialog" aria-labelledby="write-title" @click="closeWriteBackdrop"><h2 id="write-title">开启受控写入？</h2><p>开启后，智能体可以通过 MCP 在游戏中制造、建造及航行，操作可能消耗机甲物料与核心能量。请确认当前游戏状态适合执行任务。</p><div class="row"><button autofocus @click="$refs.writeDialog.close()">保持只读</button><button class="danger-button" @click="confirmWrite">确认开启</button></div></dialog>
+  <div class="toasts" aria-live="polite" aria-atomic="false"><transition-group name="fade"><div v-for="toast in toasts" :key="toast.id" :class="['toast', toast.type === 'error' ? 'danger' : toast.type === 'success' ? 'success' : 'info']">{{ toast.message }}</div></transition-group></div>
+</div>
+<noscript>请启用 JavaScript 以使用 Spherewright 控制台。</noscript>
+</body>
+</html>
