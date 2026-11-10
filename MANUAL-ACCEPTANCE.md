@@ -330,6 +330,27 @@ $payload = @{ destination_planet_id=$homePlanetId; destination_star_id=$homeStar
 
 ---
 
+### 3. 前端版本管理与回滚指南 (Version & Rollback)
+
+为保障工程演进与生产安全，前端已规范化版本控制：
+
+- **当前版本 (v2.0.0)**：戴森球计划太空科技风控制台 (`index.html`)，集成主脑链路、机甲三维坐标、核心电量进度槽、受控写入互锁开关、四矩阵账本流。
+- **基线版本 (v1.0.0)**：初始标准版控制台，完整保存在 `src/sphere_agent/web/index.v1.0.0.html`。同时可在浏览器直接访问 `http://localhost:8000/index.v1.0.0.html` 独立比对。
+
+**一键回滚方式**：
+
+方式 1（文件覆盖）：
+```powershell
+Copy-Item "src/sphere_agent/web/index.v1.0.0.html" "src/sphere_agent/web/index.html" -Force
+```
+
+方式 2（Git 检出）：
+```powershell
+git checkout 1ff41cf -- src/sphere_agent/web/index.html
+```
+
+---
+
 ### 仓库交付范围
 
 只提交必要源码、示例配置、README 与本手册；任务书、个人授权文件、密钥配置、账本、缓存及本地历史验证记录不上传。`.gitignore` 排除这些本地材料。上游契约来源保留在已有 UPSTREAM.md。

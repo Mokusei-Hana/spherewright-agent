@@ -197,6 +197,8 @@ def create_app(config_path: str = "config.toml") -> FastAPI:
 
         return {
             "agent_version": "0.1.0",
+            "console_version": "2.0.0",
+            "available_versions": ["2.0.0", "1.0.0"],
             "doctor": doctor,
             "python": doctor["python"],
             "platform": doctor["platform"],
