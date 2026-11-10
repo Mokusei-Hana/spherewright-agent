@@ -6,6 +6,7 @@ model = "deepseek-chat"
 api_key_env = "DSP_AI_API_KEY"
 timeout_seconds = 60
 max_tokens = 2048
+context_bytes = 64000
 
 [mcp]
 # Use the matching official MCP/Plugin release; never mix assemblies.
@@ -18,8 +19,16 @@ database = "agent.db"
 max_steps = 12
 max_writes = 3
 max_recipe_executions = 5
+max_material_items = 100
+max_read_retries = 2
+max_action_polls = 120
+max_harvest_yield = 10
+max_harvest_distance = 12
+max_move_distance = 12
+max_move_energy = 1000000
+min_core_energy = 100000
 poll_seconds = 1
 action_timeout_seconds = 120
-# Read-only unless BOTH this setting and --allow-write are supplied.
+# Read-only unless BOTH this setting and --enable-write are supplied.
 allow_write = false
 pause_file = "PAUSE"

@@ -1,3 +1,11 @@
+# 本轮交付状态（2026-11-10）
+
+本轮按任务书只编写功能及用户文档；没有新增、修改或运行测试，没有执行静态检查、编译、环境验证、Provider 请求、MCP/Plugin 联调或游戏操作。不能据此宣称实现已通过验证或与某个安装组合兼容。
+
+本轮涉及 storage、bridge、provider、engine、cli、新增 adapters 和配置示例。线下启动与验收说明在 MANUAL-ACCEPTANCE.md。
+
+以下为基线提交自带的历史记录，不代表本轮改动通过：
+
 # Validation record — 2026-11-10
 
 Executed locally on Windows with Python 3.14.7, using an isolated virtual environment:

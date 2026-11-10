@@ -1,15 +1,16 @@
 # Spherewright Agent — Python MVP
 
-可配置 AI Provider 的《戴森球计划》Agent。**已实现真实 stdio MCP 客户端与有界手工制造链路；尚未经真实游戏验收，不是自动通关成品。** DeepSeek 只是示例配置，不是固定依赖。
+可配置 AI Provider 的《戴森球计划》Agent。**已实现真实 stdio MCP 客户端与有界制造、当地采集、科研选择与短距移动适配器；尚未经真实游戏验收，不是自动通关成品。** DeepSeek 只是示例配置，不是固定依赖。
 
 ## 已完成
 
 - Python 3.11+ CLI；观察、运行、查看待核销记录、原动作核销。
 - Provider 协议及 OpenAI Chat Completions 兼容适配器；用户配置地址、模型、密钥环境变量、超时和输出额度。支持兼容该协议且能调用工具的服务/本地模型。
 - 连接用户安装的 Spherewright MCP stdio 进程，自动发现工具及 JSON Schema，校验实际参数；读取安装版本自己的 Agent playbook。
-- 有限决策/写入/单次制造次数预算；模型仅能调用 observe、catalog、handcraft、finish，不接触原始 commit、任意 Python 或 Shell。
+- 有限决策/写入/单次制造次数预算；模型仅能调用 observe、catalog、resources、handcraft、harvest、select_research、move、finish，不接触原始 commit、任意 Python 或 Shell。
 - 手工制造：新鲜完整玩家 hash → 原生 prepare → 披露物料/计划并由本地用户确认 → 同一 token/会话/星球 commit → 核销原 actionId → 原生终态、产品增量与新鲜状态回读。
 - SQLite WAL/FULL 保存提交前意图、唯一幂等键、原 actionId、原始终态及读回；计划 token 不落盘。未知结果冻结写入，绝不换 key 重放。
+- SQLite 任务状态机与累计预算；默认只读，显式启用 A–D 写适配器；E–G 抛出 Unsupported。
 - 同一账本的进程排他锁、PAUSE 文件、Ctrl+C 停止；原生和平/非沙盒/归属/健康/Journal 门禁。
 
 ## 上游核查与边界
@@ -45,10 +46,10 @@ $env:DSP_AI_API_KEY = '你的密钥'
 确认只读工作正常后，将 `[agent].allow_write` 设为 `true`，再显式启用写入：
 
 ```powershell
-.\.venv\Scripts\sphere-agent --config config.toml --allow-write run --goal '从当前解锁配方中选择一种能制造的物品，只制造一次并汇报结果'
+.\.venv\Scripts\sphere-agent --config config.toml --enable-write run --goal '从当前解锁配方中选择一种能制造的物品，只制造一次并汇报结果'
 ```
 
-每个精确 prepare 计划会显示材料预算和完成条件，输入 `yes` 才提交。用户确认期间计划过期会停止，不自动刷新后沿用旧批准。模型必须支持串行工具调用；返回多个并行调用会停止。对话随步数有限增长，超出模型上下文时停止，可调整 max_steps；MVP 不伪称具有上下文能力自动检测。
+每个精确 prepare 计划会显示材料预算和完成条件，输入 `yes` 才提交。用户确认期间计划过期会停止，不自动刷新后沿用旧批准。模型必须支持串行工具调用；返回多个并行调用会停止。对话按 context_bytes 滑动裁剪，保留系统指令、目标和完整工具对，为工具定义和输出预留空间；不自动探测模型上下文上限。
 
 ## 暂停、重连与核销
 
@@ -64,19 +65,16 @@ New-Item PAUSE -ItemType File
 
 使用同一配置/账本；不要另开不同数据库绕过 pending。运行前停止其他游戏写入者，手工操作也不要与制造并发。锁仅保护同一账本，不宣称能排他控制所有其他 Agent。进程重启不是游戏重启许可，模型更换不清理 pending。对话历史不恢复；新一轮重新观察，已接受动作只核销。
 
-## 必要代码检查与人工验收
+## 任务持久化与用户验收
 
-```powershell
-.\.venv\Scripts\python -m pip install -e '.[dev]'
-.\.venv\Scripts\ruff check .
-.\.venv\Scripts\python -m compileall -q src
-.\.venv\Scripts\python -m unittest discover -s tests -v
-```
+`new/create` 创建持久任务，`status` 查看状态与累计预算，`run --task-id UUID` 启动任务。
+`resume --task-id UUID` 仅检查账本与原动作，成功后停在 paused；用户显式 run 才开始新决策。
+`doctor/diagnose` 输出本地环境、MCP 和 Journal 状态。Provider 可在存在 pending 时切换并持久保存，原 MCP 配置及预算保留。
 
-离线检查只覆盖参数、账本、安全失败分支和 CLI；不是 AI 测试 Agent，也不能证明游戏可用。真实游戏检查清单见 [MANUAL-ACCEPTANCE.md](MANUAL-ACCEPTANCE.md)。安装依赖的实测冻结版本见 `requirements-tested.txt`。
+本轮没有运行测试、静态检查、编译或任何环境/游戏验证。启动命令、配置、A–D 验收与排错见 [MANUAL-ACCEPTANCE.md](MANUAL-ACCEPTANCE.md)。
 
 ## 未完成
 
-未进行真实 LLM 请求、MCP/Plugin 游戏联调或实际制造。未实现原生 Anthropic/Gemini 协议适配（兼容网关可配置）、供应商能力探测、热切换模型、持久对话规划恢复、Web 控制台、自动采矿/建造/研究/物流/飞行、自动建成戴森球。后续每种写入都必须单独实现其原生 prepare/commit/终态/材料/拓扑验证，不能通配开放 MCP 写工具。
+未进行真实 LLM 请求、MCP/Plugin 游戏联调或实际制造。未实现原生 Anthropic/Gemini 协议适配（兼容网关可配置）、供应商能力探测、运行中热切换模型、持久对话规划恢复、Web 控制台、跨节点自动采矿、建造、自动科研规划、物流、飞行、自动建成戴森球。后续每种写入都必须单独实现其原生 prepare/commit/终态/材料/拓扑验证，不能通配开放 MCP 写工具。
 
 本地数据库包含游戏状态和目标，请自行保管；默认忽略配置、密钥文件和账本，提交仅含示例配置与源码。

@@ -15,8 +15,11 @@ READS = {
     "spherewright_get_recipe_catalog",
     "spherewright_get_action_result",
     "spherewright_get_gameplay_journal",
+    "spherewright_list_resource_nodes",
+    "spherewright_inspect_resource_node",
 }
-WRITES = {"spherewright_prepare_handcraft", "spherewright_commit_handcraft"}
+WRITES = {f"spherewright_{phase}_{kind}" for phase in ("prepare", "commit")
+          for kind in ("handcraft", "harvest", "select_research", "move")}
 
 
 class Bridge:
@@ -25,13 +28,15 @@ class Bridge:
 
     async def discover(self):
         cursor = None
-        while True:
+        for _ in range(32):
             page = await asyncio.wait_for(self.session.list_tools(cursor=cursor), self.timeout)
             self.schemas.update({t.name: t.inputSchema for t in page.tools})
             cursor = page.nextCursor
             if not cursor:
                 break
-        missing = READS - self.schemas.keys()
+        else:
+            raise RuntimeError("Tool discovery page budget exceeded")
+        missing = (READS - {"spherewright_list_resource_nodes", "spherewright_inspect_resource_node"}) - self.schemas.keys()
         if missing:
             raise RuntimeError(f"Missing upstream read tools: {sorted(missing)}")
 
@@ -65,8 +70,10 @@ class Bridge:
 @asynccontextmanager
 async def connect(config):
     params = StdioServerParameters(command=config["command"], args=config["args"])
+    # stdio_client owns and reaps its child on error/cancellation; never detach it.
     async with stdio_client(params) as (reader, writer):
-        async with ClientSession(reader, writer) as session:
+        from datetime import timedelta
+        async with ClientSession(reader, writer, read_timeout_seconds=timedelta(seconds=config["timeout_seconds"])) as session:
             await asyncio.wait_for(session.initialize(), config["timeout_seconds"])
             bridge = Bridge(session, config["timeout_seconds"])
             await bridge.discover()
