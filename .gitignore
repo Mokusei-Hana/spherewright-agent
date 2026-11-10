@@ -8,3 +8,6 @@ config.toml
 .ruff_cache/
 dist/
 build/
+*任务书*.md
+VALIDATION.md
+remote-authorization*.json

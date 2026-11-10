@@ -1,16 +1,16 @@
 # Spherewright Agent — Python MVP
 
-可配置 AI Provider 的《戴森球计划》Agent。**已实现真实 stdio MCP 客户端与有界制造、当地采集、科研选择与短距移动适配器；尚未经真实游戏验收，不是自动通关成品。** DeepSeek 只是示例配置，不是固定依赖。
+可配置 AI Provider 的《戴森球计划》Agent。**已实现真实 stdio MCP 客户端与有界 A–G 动作适配器（制造、采集、科研、移动、建造连接、本地物流及受保护 Voyager）；尚未经真实游戏验收，不是自动通关成品。** DeepSeek 只是示例配置，不是固定依赖。
 
 ## 已完成
 
 - Python 3.11+ CLI；观察、运行、查看待核销记录、原动作核销。
 - Provider 协议及 OpenAI Chat Completions 兼容适配器；用户配置地址、模型、密钥环境变量、超时和输出额度。支持兼容该协议且能调用工具的服务/本地模型。
 - 连接用户安装的 Spherewright MCP stdio 进程，自动发现工具及 JSON Schema，校验实际参数；读取安装版本自己的 Agent playbook。
-- 有限决策/写入/单次制造次数预算；模型仅能调用 observe、catalog、resources、handcraft、harvest、select_research、move、finish，不接触原始 commit、任意 Python 或 Shell。
+- 有限决策/写入/单次制造次数预算；模型仅能调用显式观察入口与 A–G 有界适配器，不接触原始 commit、任意 Python 或 Shell。
 - 手工制造：新鲜完整玩家 hash → 原生 prepare → 披露物料/计划并由本地用户确认 → 同一 token/会话/星球 commit → 核销原 actionId → 原生终态、产品增量与新鲜状态回读。
 - SQLite WAL/FULL 保存提交前意图、唯一幂等键、原 actionId、原始终态及读回；计划 token 不落盘。未知结果冻结写入，绝不换 key 重放。
-- SQLite 任务状态机与累计预算；默认只读，显式启用 A–D 写适配器；E–G 抛出 Unsupported。
+- SQLite 任务状态机与累计预算；默认只读，显式启用 A–G 写适配器；星际飞行还需要本地精确授权与原生往返预算。
 - 同一账本的进程排他锁、PAUSE 文件、Ctrl+C 停止；原生和平/非沙盒/归属/健康/Journal 门禁。
 
 ## 上游核查与边界
@@ -73,8 +73,17 @@ New-Item PAUSE -ItemType File
 
 本轮没有运行测试、静态检查、编译或任何环境/游戏验证。启动命令、配置、A–D 验收与排错见 [MANUAL-ACCEPTANCE.md](MANUAL-ACCEPTANCE.md)。
 
+## E–G 入口与能力边界
+
+`factory` / `inspect --object-id ID` 读取本地实际对象，`system` / `route` 读取星系及原生往返预算。
+`action --action NAME --arguments JSON` 不经过模型，使用相同的安全提交门和任务账本；支持 build、belt、sorter、transfer、configure_recipe、configure_storage、voyager_flight。每个提交仍需配置 allow_write、命令 --enable-write 与本地 yes。
+
+单体建筑、原生网格路径和分拣器必须读回实际正数对象 ID、几何和连接；配方与箱子容量必须读回实际设备配置。转移分别核算 count/inc：无增产点数允许有界部分转移，带点数仅允许完整物品存量，以避免猜测原生分堆回执。储罐只支持原生库存观察与客户端配额，缺少原生写映射时 Unsupported。
+
+Voyager 默认禁用，用户必须提供精确本地路线/返航/人工恢复审查授权；原生能量、曲率资源、返航阈值和期限缺一即停。账本按会话/星系/星球隔离并保留全局 pending；恢复只读核销原 action，不自动 reload，也不把回家着陆当成原生保存完成。完整命令、配置和人工观察步骤见 [MANUAL-ACCEPTANCE.md](MANUAL-ACCEPTANCE.md)。
+
 ## 未完成
 
-未进行真实 LLM 请求、MCP/Plugin 游戏联调或实际制造。未实现原生 Anthropic/Gemini 协议适配（兼容网关可配置）、供应商能力探测、运行中热切换模型、持久对话规划恢复、Web 控制台、跨节点自动采矿、建造、自动科研规划、物流、飞行、自动建成戴森球。后续每种写入都必须单独实现其原生 prepare/commit/终态/材料/拓扑验证，不能通配开放 MCP 写工具。
+未进行真实 LLM 请求、MCP/Plugin 游戏联调或实际制造。未实现原生 Anthropic/Gemini 协议适配（兼容网关可配置）、供应商能力探测、运行中热切换模型、持久对话规划恢复、Web 控制台、跨节点自动规划、任意蓝图/物流网络、自动存档恢复或自动建成戴森球。后续每种写入都必须单独实现其原生 prepare/commit/终态/材料/拓扑验证，不能通配开放 MCP 写工具。
 
 本地数据库包含游戏状态和目标，请自行保管；默认忽略配置、密钥文件和账本，提交仅含示例配置与源码。

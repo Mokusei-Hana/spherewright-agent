@@ -27,6 +27,28 @@ max_harvest_distance = 12
 max_move_distance = 12
 max_move_energy = 1000000
 min_core_energy = 100000
+# E: one ordinary paid build/path; native placement checks remain mandatory.
+build_item_ids = [2201, 2203, 2301, 2101, 2102, 2106, 2302, 2303]
+max_build_objects = 12
+max_build_distance = 16
+max_belt_length = 20
+max_grid_snap_distance = 3
+geometry_tolerance = 0.25
+# F: local admission quota; native delivery/tank settings are separate.
+max_transfer_items = 100
+max_container_items = 10000
+# G: exact owner authorization file, never a model tool argument.
+allow_remote_flight = false
+remote_authorization_file = "remote-authorization.json"
+max_remote_distance = 100000000
+max_remote_game_ticks = 36000
+return_reserve_game_ticks = 18000
+remote_min_core_ratio = 0.95
+extra_warper_reserve = 1
+max_warp_game_ticks = 1800
+max_arrival_offset = 3000000
+min_return_energy = 1000000
+remote_wall_seconds = 600
 poll_seconds = 1
 action_timeout_seconds = 120
 # Read-only unless BOTH this setting and --enable-write are supplied.

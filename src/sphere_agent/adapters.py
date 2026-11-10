@@ -216,6 +216,12 @@ ADAPTERS = {adapter.tool: adapter for adapter in (Handcraft(), Harvest(), Resear
 
 
 def adapter_for(name):
+    from .factory import FACTORY_ADAPTERS
+    from .remote import REMOTE_ADAPTERS
+    if name in FACTORY_ADAPTERS:
+        return FACTORY_ADAPTERS[name]
+    if name in REMOTE_ADAPTERS:
+        return REMOTE_ADAPTERS[name]
     if name not in ADAPTERS:
-        raise Unsupported(f"Unsupported action: {name}; E–G and advanced actions are not implemented")
+        raise Unsupported(f"Unsupported action: {name}; no raw upstream passthrough")
     return ADAPTERS[name]

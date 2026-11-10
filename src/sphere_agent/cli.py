@@ -19,12 +19,25 @@ def load_config(path):
     agent = config["agent"]
     defaults = {"max_material_items": 100, "max_read_retries": 2, "max_action_polls": 120,
                 "max_harvest_yield": 10, "max_harvest_distance": 12, "max_move_distance": 12,
-                "max_move_energy": 1000000, "min_core_energy": 100000}
+                "max_move_energy": 1000000, "min_core_energy": 100000,
+                "max_build_objects": 12, "max_build_distance": 16, "max_belt_length": 20,
+                "max_grid_snap_distance": 3, "geometry_tolerance": 0.25, "max_transfer_items": 100,
+                "max_container_items": 10000, "build_item_ids": [2201, 2203, 2301, 2101, 2102, 2106, 2302, 2303],
+                "allow_remote_flight": False, "remote_authorization_file": "remote-authorization.json",
+                "max_remote_distance": 100000000, "max_remote_game_ticks": 36000,
+                "return_reserve_game_ticks": 18000, "remote_min_core_ratio": 0.95,
+                "extra_warper_reserve": 1, "max_warp_game_ticks": 1800, "max_arrival_offset": 3000000,
+                "min_return_energy": 1000000, "remote_wall_seconds": 600}
     caps = {"max_steps": 100, "max_writes": 20, "max_recipe_executions": 1000,
             "max_material_items": 10000, "max_read_retries": 5, "max_action_polls": 600,
             "max_harvest_yield": 100, "max_harvest_distance": 16, "max_move_distance": 16,
             "max_move_energy": 100000000, "min_core_energy": 1000000000,
             "poll_seconds": 60, "action_timeout_seconds": 600}
+    caps.update(max_build_objects=32, max_build_distance=30, max_belt_length=30, max_grid_snap_distance=3,
+                geometry_tolerance=0.5, max_transfer_items=10000, max_container_items=100000,
+                max_remote_distance=1000000000000, max_remote_game_ticks=108000, return_reserve_game_ticks=104400,
+                remote_min_core_ratio=1, extra_warper_reserve=18, max_warp_game_ticks=108000,
+                max_arrival_offset=10000000, min_return_energy=1000000000000, remote_wall_seconds=86400)
     for key, value in defaults.items():
         agent.setdefault(key, value)
     for key, cap in caps.items():
@@ -34,6 +47,21 @@ def load_config(path):
     for key in ("max_material_items", "max_read_retries", "max_action_polls", "max_harvest_yield"):
         if type(agent[key]) is not int:
             raise ValueError(f"agent.{key} must be an integer")
+    for key in ("max_build_objects", "max_transfer_items", "max_container_items", "max_remote_game_ticks",
+                "return_reserve_game_ticks", "extra_warper_reserve", "max_warp_game_ticks", "remote_wall_seconds"):
+        if type(agent[key]) is not int:
+            raise ValueError(f"agent.{key} must be an integer")
+    if not (7200 <= agent["max_remote_game_ticks"] and 3600 <= agent["return_reserve_game_ticks"]
+            <= agent["max_remote_game_ticks"] - 3600 and agent["remote_min_core_ratio"] >= 0.8
+            and agent["remote_wall_seconds"] >= 600):
+        raise ValueError("Remote round-trip/return/energy/wall budgets violate native limits")
+    if type(agent["allow_remote_flight"]) is not bool:
+        raise ValueError("agent.allow_remote_flight must be boolean")
+    if not isinstance(agent["build_item_ids"], list) or not agent["build_item_ids"] or any(
+        type(value) is not int or value not in (2201, 2203, 2301, 2101, 2102, 2106, 2302, 2303)
+        for value in agent["build_item_ids"]
+    ):
+        raise ValueError("build_item_ids must be a nonempty subset of the supported simple buildings")
     for key in ("max_steps", "max_writes", "max_recipe_executions", "poll_seconds", "action_timeout_seconds"):
         if (
             not isinstance(agent[key], (int, float))
@@ -69,7 +97,7 @@ def load_config(path):
     if not isinstance(config["mcp"]["args"], list) or any(type(a) is not str for a in config["mcp"]["args"]):
         raise ValueError("mcp.args must be an array of strings")
     base = Path(path).resolve().parent
-    for key in ("database", "pause_file"):
+    for key in ("database", "pause_file", "remote_authorization_file"):
         agent[key] = str((base / agent[key]).resolve())
     return config
 
@@ -89,7 +117,7 @@ async def execute(args, config):
                 print(json.dumps({"tasks": [ledger.task(args.task_id)] if args.task_id else ledger.tasks(),
                                   "pending": ledger.pending()}, ensure_ascii=False, indent=2))
                 return
-            if args.command in ("run", "resume"):
+            if args.command in ("run", "resume", "action"):
                 if args.command == "resume":
                     if not args.task_id:
                         raise ValueError("resume requires --task-id")
@@ -105,6 +133,8 @@ async def execute(args, config):
                 else:
                     if ledger.pending():
                         raise RuntimeError("Unresolved intent: resume/reconcile original action first")
+                    if args.command == "action" and args.task_id:
+                        raise ValueError("Direct action creates its own bounded task; use resume for existing actions")
                     task = ledger.task(args.task_id) if args.task_id else ledger.create_task(args.goal, config)
                     if task["state"] == "completed" or task["state"] == "failed":
                         raise RuntimeError("Terminal tasks cannot run again; create a new task")
@@ -113,6 +143,10 @@ async def execute(args, config):
                     config = task["config"]
                     if task["state"] in ("running", "waiting_confirmation", "blocked"):
                         raise RuntimeError("Interrupted running task: use resume first")
+                # Old A-D tasks gain safe new adapter defaults without relaxing original budgets.
+                for key, value in load_config(args.config)["agent"].items():
+                    task["config"]["agent"].setdefault(key, value)
+                ledger.save_task(task)
             if args.command == "ledger":
                 print(json.dumps(ledger.pending(), ensure_ascii=False, indent=2))
                 return
@@ -126,6 +160,47 @@ async def execute(args, config):
                 if args.command == "run":
                     engine.state("running")
                     await engine.run(CompatibleProvider(config["provider"]), task["goal"])
+                elif args.command == "action":
+                    if not args.action or args.arguments is None:
+                        raise ValueError("action requires --action NAME and --arguments JSON object")
+                    arguments = json.loads(args.arguments)
+                    if not isinstance(arguments, dict):
+                        raise ValueError("--arguments must be a JSON object")
+                    engine.state("running")
+                    task["steps"] += 1
+                    ledger.save_task(task)
+                    await engine.enter()
+                    result = await engine.action(args.action, arguments)
+                    engine.state("completed")
+                    print(json.dumps(redact({"task_id": task["id"], "result": result}), ensure_ascii=False, indent=2))
+                elif args.command in ("factory", "inspect", "quota", "route", "system"):
+                    await engine.enter()
+                    observation, identity = await engine.observe()
+                    if args.command == "system":
+                        result = await engine.system(identity)
+                    elif args.command == "factory":
+                        result = await engine.read("spherewright_list_factory_entities", {**identity, "objectKind": "entity", "limit": 50})
+                    elif args.command == "route":
+                        from .remote import route_preview
+                        result, _, _ = await route_preview(engine, identity, args.destination_planet_id, args.destination_star_id, args.journey_id)
+                    else:
+                        from .factory import inspect
+                        endpoint = await inspect(engine, identity, args.object_id)
+                        result = endpoint
+                        if args.command == "quota":
+                            if not engine.allow_write or engine.paused():
+                                raise RuntimeError("Quota changes require --enable-write, allow_write=true and no PAUSE")
+                            if args.max_items is None or not 0 <= args.max_items <= config["agent"]["max_container_items"]:
+                                raise ValueError("--max-items must fit local container quota budget")
+                            if endpoint["componentKind"] not in ("storage", "tank"):
+                                raise ValueError("Quota requires exact local box or tank")
+                            if endpoint["componentKind"] == "tank" and type(endpoint.get("tankFluidCount")) is not int:
+                                raise RuntimeError("Tank stock unknown; cannot admit a quota")
+                            if endpoint["componentKind"] == "tank" and endpoint["tankFluidCount"] > args.max_items:
+                                raise RuntimeError("Current tank stock already exceeds proposed quota")
+                            scope = await engine.world_scope(identity)
+                            result = ledger.set_container_quota(scope, endpoint["objectId"], args.max_items, endpoint)
+                    print(json.dumps(redact(result), ensure_ascii=False, indent=2))
                 elif args.command == "resume":
                     pending = ledger.pending()
                     if pending:
@@ -168,7 +243,14 @@ def main():
     parser = argparse.ArgumentParser(description="Bounded Spherewright Python agent")
     parser.add_argument("--config", default="config.toml")
     parser.add_argument("--enable-write", "--allow-write", dest="enable_write", action="store_true")
-    parser.add_argument("command", choices=["check", "observe", "run", "reconcile", "ledger", "new", "create", "status", "resume", "doctor", "diagnose"])
+    parser.add_argument("command", choices=["check", "observe", "run", "reconcile", "ledger", "new", "create", "status", "resume", "doctor", "diagnose", "action", "factory", "inspect", "quota", "route", "system"])
+    parser.add_argument("--action")
+    parser.add_argument("--arguments")
+    parser.add_argument("--object-id", type=int)
+    parser.add_argument("--max-items", type=int)
+    parser.add_argument("--destination-planet-id", type=int)
+    parser.add_argument("--destination-star-id", type=int)
+    parser.add_argument("--journey-id")
     parser.add_argument("--task-id")
     parser.add_argument("--goal", default="观察当前状态并汇报可以手工制造的下一步，不执行写入。")
     args = parser.parse_args()

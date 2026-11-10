@@ -17,9 +17,15 @@ READS = {
     "spherewright_get_gameplay_journal",
     "spherewright_list_resource_nodes",
     "spherewright_inspect_resource_node",
+    "spherewright_get_build_catalog",
+    "spherewright_inspect_factory_entity",
+    "spherewright_list_factory_entities",
+    "spherewright_get_local_star_system",
+    "spherewright_get_voyager_star_catalog",
+    "spherewright_preview_voyager_route",
 }
 WRITES = {f"spherewright_{phase}_{kind}" for phase in ("prepare", "commit")
-          for kind in ("handcraft", "harvest", "select_research", "move")}
+          for kind in ("handcraft", "harvest", "select_research", "move", "build", "transfer", "configure_building", "voyager_flight")}
 
 
 class Bridge:
@@ -36,7 +42,10 @@ class Bridge:
                 break
         else:
             raise RuntimeError("Tool discovery page budget exceeded")
-        missing = (READS - {"spherewright_list_resource_nodes", "spherewright_inspect_resource_node"}) - self.schemas.keys()
+        core = {"spherewright_get_status", "spherewright_get_session_state", "spherewright_get_player_state",
+                "spherewright_get_progression_state", "spherewright_get_recipe_catalog", "spherewright_get_action_result",
+                "spherewright_get_gameplay_journal"}
+        missing = core - self.schemas.keys()
         if missing:
             raise RuntimeError(f"Missing upstream read tools: {sorted(missing)}")
 
