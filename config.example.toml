@@ -1,0 +1,25 @@
+[provider]
+# Any OpenAI Chat Completions-compatible endpoint. DeepSeek is only an example.
+type = "openai-compatible"
+base_url = "https://api.deepseek.com"
+model = "deepseek-chat"
+api_key_env = "DSP_AI_API_KEY"
+timeout_seconds = 60
+max_tokens = 2048
+
+[mcp]
+# Use the matching official MCP/Plugin release; never mix assemblies.
+command = 'C:\Spherewright\Spherewright.Mcp.exe'
+args = []
+timeout_seconds = 30
+
+[agent]
+database = "agent.db"
+max_steps = 12
+max_writes = 3
+max_recipe_executions = 5
+poll_seconds = 1
+action_timeout_seconds = 120
+# Read-only unless BOTH this setting and --allow-write are supplied.
+allow_write = false
+pause_file = "PAUSE"
